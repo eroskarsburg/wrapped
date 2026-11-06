@@ -16,7 +16,10 @@ app.whenReady().then(() => {
   initStore()
   createWindow()
   applySettings(loadSettings())
-  watchConfig(() => broadcast('config-changed'))
+  watchConfig(() => {
+    applySettings(loadSettings())
+    broadcast('config-changed')
+  })
   nativeTheme.on('updated', () => broadcast('os-theme', nativeTheme.shouldUseDarkColors))
 })
 

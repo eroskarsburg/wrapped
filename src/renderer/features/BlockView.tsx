@@ -45,7 +45,7 @@ function renderLine(line: StyledLine, ranges: Range[]): ReactNode {
         nodes.push(<span key={key} className="secret" style={spanStyle(span)}>{'•'.repeat(text.length)}</span>)
       } else if (range?.mark === 'link') {
         const target = lineText(line).slice(range.from, range.to)
-        nodes.push(<a key={key} className="link" data-target={target} style={spanStyle(span)}>{text}</a>)
+        nodes.push(<a key={key} className="link" data-target={target} title="Ctrl+clique para abrir" style={spanStyle(span)}>{text}</a>)
       } else if (range) {
         nodes.push(<mark key={key} className={range.mark === 'current' ? 'current' : ''} style={spanStyle(span)}>{text}</mark>)
       } else {
@@ -113,6 +113,7 @@ function smartSelect(event: React.MouseEvent): void {
     selection.removeAllRanges()
     selection.addRange(range)
     event.preventDefault()
+    if (useApp.getState().settings.terminal.copyOnSelect) void api.copyText(selection.toString())
     return
   }
 }
@@ -220,8 +221,9 @@ export const BlockView = memo(function BlockView({ block, session, find, current
           className="block-output"
           onDoubleClick={smartSelect}
           onClick={(event) => {
+            // Ctrl is required so that selecting text over a link never opens it.
             const target = (event.target as HTMLElement).closest<HTMLElement>('a.link')?.dataset.target
-            if (!target) return
+            if (!target || !event.ctrlKey) return
             if (/^https?:/i.test(target)) void api.openExternal(target)
             else useApp.getState().openFile(target)
           }}

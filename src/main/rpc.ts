@@ -9,7 +9,7 @@ import { completions, describeToken } from './completions'
 import { applySettings } from './window'
 import { configDir } from './paths'
 import { createSession, getSession } from './pty'
-import { detectProfiles, listCommands, nodeVersion } from './shells'
+import { detectProfiles, listCommands, nodeVersion, runQuiet } from './shells'
 import * as store from './store'
 
 let builtinProfiles: Promise<Profile[]> | null = null
@@ -100,6 +100,7 @@ export const handlers = {
 
   // Code
   homeDir: () => homedir(),
+  runQuiet: (_: WebContents, command: string, cwd?: string) => runQuiet(command, cwd),
   nodeVersion: () => nodeVersion(),
   listDir: (_: WebContents, dir: string) => listDir(dir),
   readText: (_: WebContents, path: string) => readText(path),

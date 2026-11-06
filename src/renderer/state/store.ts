@@ -84,6 +84,8 @@ interface AppState {
   inputDraft: { paneId: string; text: string; id: number } | null
   loaded: boolean
   nodeVersion?: string
+  /** Bumped when a command starts or ends, for views that summarize sessions. */
+  sessionTick: number
 
   load(): Promise<void>
   reloadConfig(): Promise<void>
@@ -147,6 +149,9 @@ export const takeRestoredBlocks = (id: string): PersistedBlock[] => {
 const hooks: SessionHooks = {
   settings: () => useApp.getState().settings,
   knownCommands: () => knownCommands,
+  onRunningChange() {
+    useApp.setState((state) => ({ sessionTick: state.sessionTick + 1 }))
+  },
   onBell() {
     if (useApp.getState().settings.terminal.audibleBell) playBell()
   },
@@ -249,6 +254,7 @@ export const useApp = create<AppState>((set, get) => ({
   agentDraft: null,
   inputDraft: null,
   loaded: false,
+  sessionTick: 0,
 
   async load() {
     const [settings, profiles, session, entries, home] = await Promise.all([
@@ -301,9 +307,11 @@ export const useApp = create<AppState>((set, get) => ({
 
   activeTab: () => get().tabs.find((tab) => tab.id === get().activeTabId),
 
+  /** The focused terminal, or the tab's first one while an editor pane has the focus. */
   activeSession() {
     const tab = get().activeTab()
-    return tab ? sessions.get(tab.activePaneId) : undefined
+    if (!tab) return undefined
+    return sessions.get(tab.activePaneId) ?? leaves(tab.root).map((leaf) => sessions.get(leaf.id)).find(Boolean)
   },
 
   newTab(profileId, cwd, startup) {
@@ -418,7 +426,8 @@ export const useApp = create<AppState>((set, get) => ({
 
   openTabConfig(config, values) {
     const tab = tabFromConfig(config, values, get().profiles)
-    set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tab.id }))
+    const wantsAgent = config.panes.some((pane) => pane.type === 'agent')
+    set((state) => ({ tabs: [...state.tabs, tab], activeTabId: tab.id, agentOpen: state.agentOpen || wantsAgent }))
     get().persist()
   },
 

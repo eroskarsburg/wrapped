@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { buildMatcher, compileSecretPatterns } from '../../shared/logic'
+import { findTheme, themeTokens } from '../../shared/themes'
 import type { PaneLeaf } from '../../shared/types'
 import { paneEvents } from '../actions'
 import { api } from '../rpc'
@@ -80,6 +81,12 @@ export function TerminalPane({ leaf, active, visible }: { leaf: PaneLeaf; active
   const showCliToolbar = useApp((state) => state.settings.agent.showCliAgentToolbar)
   const focusOnHover = useApp((state) => state.settings.appearance.focusOnHover)
   const focusPane = useApp((state) => state.focusPane)
+  const themes = useApp((state) => state.themes)
+  const paneStyle = useMemo(() => {
+    if (!session.profile.theme) return undefined
+    const theme = findTheme(themes, session.profile.theme)
+    return { ...themeTokens(theme), background: theme.background, color: theme.foreground } as CSSProperties
+  }, [session, themes])
   const secrets = useMemo(() => (redaction ? compileSecretPatterns(customSecrets) : null), [redaction, customSecrets])
   const { blocks, running, alt, integrated, ready, exited } = session
   const fullScreen = alt || !integrated
@@ -169,7 +176,7 @@ export function TerminalPane({ leaf, active, visible }: { leaf: PaneLeaf; active
 
   return (
     <div
-      className={className} ref={container} data-pane={session.id}
+      className={className} ref={container} data-pane={session.id} style={paneStyle}
       onMouseDown={() => focusPane(session.id)}
       onMouseEnter={() => focusOnHover && focusPane(session.id)}
       onMouseUp={() => {

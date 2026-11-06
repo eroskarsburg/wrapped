@@ -94,6 +94,7 @@ export function applySettings(settings: Settings): void {
   nativeTheme.themeSource = 'system'
   for (const window of BrowserWindow.getAllWindows()) {
     window.setBackgroundMaterial(settings.appearance.backdrop)
+    window.setOpacity(settings.appearance.backdrop === 'none' ? settings.appearance.windowOpacity / 100 : 1)
     if (window === quakeWindow) continue
     window.setTitleBarOverlay(titleBarColors(settings))
   }

@@ -106,6 +106,27 @@ export function themeToFile(theme: Theme): Record<string, unknown> {
   }
 }
 
+/** CSS custom properties of a theme, applied to the window or to a single pane. */
+export function themeTokens(theme: Theme): Record<string, string> {
+  const dark = theme.details === 'darker'
+  const toward = dark ? '#ffffff' : '#000000'
+  const tokens: Record<string, string> = {
+    '--bg': theme.background,
+    '--fg': theme.foreground,
+    '--accent': theme.accent,
+    '--surface': mix(theme.background, toward, 0.04),
+    '--surface-2': mix(theme.background, toward, 0.08),
+    '--border': mix(theme.background, toward, 0.13),
+    '--muted': mix(theme.foreground, theme.background, 0.42),
+    '--on-accent': dark ? '#071311' : '#ffffff',
+  }
+  const colors = [...Object.values(theme.normal), ...Object.values(theme.bright)]
+  colors.forEach((color, index) => {
+    tokens[`--ansi-${index}`] = color
+  })
+  return tokens
+}
+
 export function hexToRgb(hex: string): [number, number, number] {
   const n = Number.parseInt(hex.slice(1), 16)
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255]

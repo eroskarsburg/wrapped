@@ -210,6 +210,27 @@ function ThemeCreator() {
   )
 }
 
+/** One `directory = #color` per line; a tab takes the color of the first prefix of its cwd. */
+function DirectoryColors() {
+  const colors = useApp((state) => state.settings.appearance.directoryTabColors)
+  const setSetting = useApp((state) => state.setSetting)
+  const [text, setText] = useState(() => Object.entries(colors).map(([dir, color]) => `${dir} = ${color}`).join('\n'))
+  const save = () => {
+    const parsed: Record<string, string> = {}
+    for (const line of text.split('\n')) {
+      const match = /^(.+?)\s*=\s*(#[0-9a-f]{6})\s*$/i.exec(line)
+      if (match) parsed[match[1]] = match[2]
+    }
+    setSetting('appearance.directoryTabColors', parsed)
+  }
+  return (
+    <div className="setting-row">
+      <span>Cor de aba por diretório (caminho = #rrggbb)</span>
+      <textarea aria-label="Cor de aba por diretório" rows={3} value={text} onChange={(event) => setText(event.target.value)} onBlur={save} />
+    </div>
+  )
+}
+
 function AgentSection() {
   const [key, setKey] = useState('')
   const [hasKey, setHasKey] = useState(false)
@@ -256,6 +277,7 @@ export function SettingsOverlay({ onClose }: { onClose(): void }) {
             </div>
           ))}
           {!query && section === 'Aparência' && <ThemeCreator />}
+          {!query && section === 'Aparência' && <DirectoryColors />}
           {!query && section === 'Agente' && <AgentSection />}
         </div>
       </div>

@@ -138,6 +138,12 @@ export function listCommands(): Promise<Set<string>> {
   return knownCommands
 }
 
+/** Runs a helper command out of sight, such as the one behind a dynamic enum argument. */
+export async function runQuiet(command: string, cwd?: string): Promise<string> {
+  const { stdout } = await exec(command, { cwd: cwd && existsSync(cwd) ? cwd : undefined, timeout: 8000, windowsHide: true, shell: 'powershell.exe' } as never)
+  return String(stdout)
+}
+
 export async function nodeVersion(): Promise<string | undefined> {
   try {
     const { stdout } = await exec('node', ['--version'], { timeout: 3000, windowsHide: true, shell: true })

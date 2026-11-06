@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { EnvCollection, FileEntry, GitStatusEntry, KnowledgeKind, SavedPrompt, SearchHit, Workflow } from '../../shared/types'
 import { envCommand, launchTabConfig, runPrompt, runWorkflow } from '../actions'
 import { api } from '../rpc'
@@ -40,6 +40,7 @@ function TabsPanel() {
   const profiles = useApp((state) => state.profiles)
   const newTab = useApp((state) => state.newTab)
   const tabConfigs = useApp((state) => state.tabConfigs)
+  useApp((state) => state.sessionTick)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [menu, setMenu] = useState(false)
   const [colorFor, setColorFor] = useState<string | null>(null)
@@ -251,9 +252,11 @@ function DrivePanel() {
   )
 }
 
+const noSubscription = () => () => undefined
+
 function useCwd(): string | undefined {
   const session = useApp((state) => state.activeSession())
-  return session?.cwd
+  return useSyncExternalStore(session?.subscribe ?? noSubscription, () => session?.cwd)
 }
 
 function FileNode({ entry, depth }: { entry: FileEntry; depth: number }) {

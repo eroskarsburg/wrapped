@@ -63,7 +63,10 @@ __wrapped_precmd() {
     __wrapped_send_aliases
   fi
   if [ "${WRAPPED_HONOR_PROMPT:-}" = "1" ]; then
-    json=$(printf '{"prompt":"%s"}' "$(__wrapped_json_escape "${__wrapped_user_ps1@P}" | tr -d '\n\r')")
+    # Control characters are not valid inside a JSON string, and the UI shows plain text anyway.
+    local shown
+    shown=$(printf '%s' "${__wrapped_user_ps1@P}" | sed 's/\x1b\[[0-9;]*[A-Za-z]//g; s/\x1b\][^\x07]*\x07//g' | tr -d '\001\002\033\r\n')
+    json=$(printf '{"prompt":"%s"}' "$(__wrapped_json_escape "$shown")")
     printf '\033]7777;%s\007' "$(__wrapped_hex "$json")"
   fi
 }

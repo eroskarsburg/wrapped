@@ -1,7 +1,7 @@
 import '@xterm/xterm/css/xterm.css'
 import { useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
-import { mix } from '../shared/themes'
+import { themeTokens } from '../shared/themes'
 import type { Theme } from '../shared/types'
 import { installKeybindings } from './actions'
 import { AgentPanel } from './features/Agent'
@@ -14,21 +14,10 @@ import './styles.css'
 
 function applyTheme(theme: Theme, opacity: number): void {
   const root = document.documentElement.style
-  const dark = theme.details === 'darker'
-  const toward = dark ? '#ffffff' : '#000000'
   const alpha = Math.round((opacity / 100) * 255).toString(16).padStart(2, '0')
-  root.setProperty('--bg', theme.background)
+  for (const [name, value] of Object.entries(themeTokens(theme))) root.setProperty(name, value)
   root.setProperty('--bg-alpha', `${theme.background}${alpha}`)
-  root.setProperty('--fg', theme.foreground)
-  root.setProperty('--accent', theme.accent)
-  root.setProperty('--surface', mix(theme.background, toward, 0.04))
-  root.setProperty('--surface-2', mix(theme.background, toward, 0.08))
-  root.setProperty('--border', mix(theme.background, toward, 0.13))
-  root.setProperty('--muted', mix(theme.foreground, theme.background, 0.42))
-  root.setProperty('--on-accent', dark ? '#071311' : '#ffffff')
-  const colors = [...Object.values(theme.normal), ...Object.values(theme.bright)]
-  colors.forEach((color, index) => root.setProperty(`--ansi-${index}`, color))
-  document.body.dataset.scheme = dark ? 'dark' : 'light'
+  document.body.dataset.scheme = theme.details === 'darker' ? 'dark' : 'light'
   const gradient = theme.gradient ? `linear-gradient(${theme.gradient.top}, ${theme.gradient.bottom})` : 'none'
   root.setProperty('--app-gradient', gradient)
 }
@@ -42,7 +31,8 @@ function useAppearance(): void {
 
   useEffect(() => {
     const theme = activeTheme()
-    applyTheme(theme, settings.appearance.windowOpacity)
+    // Without a backdrop the main process fades the whole window instead.
+    applyTheme(theme, settings.appearance.backdrop === 'none' ? 100 : settings.appearance.windowOpacity)
     const root = document.documentElement.style
     root.setProperty('--font-mono', settings.appearance.fontFamily)
     root.setProperty('--font-size', `${settings.appearance.fontSize}px`)

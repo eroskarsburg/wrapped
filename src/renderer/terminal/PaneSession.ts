@@ -39,6 +39,7 @@ export interface SessionHooks {
   settings(): Settings
   knownCommands(): Set<string>
   onBell(): void
+  onRunningChange(): void
   onCommandFinished(session: PaneSession, block: Block): void
   onCommandSubmitted(session: PaneSession, command: string): void
   onMetaChange(session: PaneSession): void
@@ -257,6 +258,7 @@ export class PaneSession {
     const waiter = this.commandWaiters.find((w) => !w.block)
     if (waiter) waiter.block = block
     this.notify()
+    this.hooks.onRunningChange()
     this.scheduleHeight()
   }
 
@@ -274,6 +276,7 @@ export class PaneSession {
         this.term.reset()
         this.placeHost(null)
         this.notify()
+        this.hooks.onRunningChange()
         this.hooks.onCommandFinished(this, finished)
         const waiterIndex = this.commandWaiters.findIndex((w) => w.block === block)
         if (waiterIndex >= 0) {

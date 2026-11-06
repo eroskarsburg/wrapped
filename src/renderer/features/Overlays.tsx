@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { fuzzyFilter } from '../../shared/logic'
 import { actions, bindingFor, envCommand, launchTabConfig, runPrompt, runWorkflow } from '../actions'
+import { api } from '../rpc'
 import { history, sessions, useApp, leaves, type ParamRequest } from '../state/store'
 import { SettingsOverlay } from './Settings'
 
@@ -72,7 +73,11 @@ function ListOverlay({ placeholder, entries, onClose, testId }: { placeholder: s
           onChange={(event) => { setQuery(event.target.value); setIndex(0) }}
           onKeyDown={(event) => {
             if (event.key === 'Escape') onClose()
-            if (event.key === 'Enter') run(filtered[index])
+            if (event.key === 'Enter') {
+              // Without this the keypress lands in whatever the entry opens, and submits it.
+              event.preventDefault()
+              run(filtered[index])
+            }
             if (event.key === 'ArrowDown') { event.preventDefault(); setIndex(Math.min(filtered.length - 1, index + 1)) }
             if (event.key === 'ArrowUp') { event.preventDefault(); setIndex(Math.max(0, index - 1)) }
           }}
@@ -112,12 +117,10 @@ function ParamField({ param, value, onChange, autoFocus }: { param: ParamRequest
   const [options, setOptions] = useState(param.options ?? [])
   useEffect(() => {
     if (!param.dynamic) return
-    const session = useApp.getState().activeSession()
-    if (!session?.running && session?.ready) {
-      void session.runForAgent(param.dynamic).then((output) => {
-        setOptions(output.split('\n').slice(1).map((line) => line.trim()).filter(Boolean))
-      })
-    }
+    const cwd = useApp.getState().activeSession()?.cwd
+    api.runQuiet(param.dynamic, cwd)
+      .then((output) => setOptions(output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)))
+      .catch(() => setOptions([]))
   }, [param.dynamic])
   const list = `options-${param.name}`
   return (
