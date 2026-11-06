@@ -332,6 +332,49 @@ export function toWslPath(path: string): string {
   return `/mnt/${match[1].toLowerCase()}/${match[2].replace(/\\/g, '/')}`
 }
 
+// --- Agent command policy -------------------------------------------------------------------
+
+const READ_ONLY = /^(?:ls|dir|pwd|cat|type|head|tail|wc|echo|which|where|whoami|date|git (?:status|log|diff|show|branch)|Get-(?:ChildItem|Content|Location|Date|Process|Command))(?:\s|$)/i
+
+function matchesAny(patterns: string[], command: string): boolean {
+  return patterns.some((pattern) => {
+    try {
+      return new RegExp(`^(?:${pattern})$`, 'i').test(command)
+    } catch {
+      return false
+    }
+  })
+}
+
+/** Splits on shell separators, so that a rule cannot be dodged by chaining commands. */
+export function commandSegments(command: string): string[] {
+  const parts: string[] = []
+  let cursor = 0
+  for (const token of tokenize(command)) {
+    if (token.type === 'operator' && !REDIRECTS.test(token.text)) {
+      parts.push(command.slice(cursor, token.from))
+      cursor = token.to
+    }
+  }
+  parts.push(command.slice(cursor))
+  return parts.map((part) => part.trim()).filter(Boolean)
+}
+
+export function commandNeedsApproval(
+  command: string,
+  profile: { allow: string[]; deny: string[]; execute: 'always_ask' | 'agent_decides' | 'always_allow' },
+): boolean {
+  const segments = commandSegments(command)
+  if (segments.length === 0) return true
+  if (segments.some((segment) => matchesAny(profile.deny, segment))) return true
+  // Substitutions and redirects run or write things the segment text does not show.
+  if (/[`\n]|\$\(|>/.test(command)) return profile.execute !== 'always_allow'
+  if (segments.every((segment) => matchesAny(profile.allow, segment))) return false
+  if (profile.execute === 'always_allow') return false
+  if (profile.execute === 'always_ask') return true
+  return !segments.every((segment) => READ_ONLY.test(segment))
+}
+
 const CLI_AGENTS = ['claude', 'codex', 'gemini', 'aider', 'opencode', 'copilot']
 
 export function isCliAgentCommand(command: string): boolean {

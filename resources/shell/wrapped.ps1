@@ -45,7 +45,10 @@ $script:WrappedRanCommand = $false
 $script:WrappedNativeBefore = $global:LASTEXITCODE
 
 if (Get-Module PSReadLine) {
-    Set-PSReadLineOption -PredictionSource None -ErrorAction SilentlyContinue
+    # PSReadLine 2.0, shipped with Windows PowerShell 5.1, has no predictions.
+    if ((Get-Command Set-PSReadLineOption).Parameters.ContainsKey('PredictionSource')) {
+        Set-PSReadLineOption -PredictionSource None
+    }
     Set-PSReadLineOption -BellStyle None -ErrorAction SilentlyContinue
     Set-PSReadLineOption -EditMode Emacs -ErrorAction SilentlyContinue
     # Bare continuation prompt keeps the discarded echo region trivially small.
@@ -75,6 +78,12 @@ function global:prompt {
     $script:WrappedRanCommand = $false
     $cwd = (Get-Location -PSProvider FileSystem).ProviderPath
     __Wrapped-Meta @{ cwd = $cwd; git = (__Wrapped-GitBranch); shell = 'powershell'; venv = "$env:VIRTUAL_ENV"; user = "$env:USERNAME"; host = "$env:COMPUTERNAME" }
+    if (-not $script:WrappedAliasesSent) {
+        $script:WrappedAliasesSent = $true
+        $aliases = @{}
+        foreach ($alias in Get-Alias) { $aliases[$alias.Name] = $alias.Definition }
+        __Wrapped-Meta @{ aliases = $aliases }
+    }
     $global:LASTEXITCODE = $native
     __Wrapped-Osc '133;A'
     $text = if ($env:WRAPPED_HONOR_PROMPT -eq '1') { & $script:WrappedUserPrompt } else { '' }

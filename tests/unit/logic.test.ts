@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  closestCommand, commandWords, compileSecretPatterns, encodeCommand, filterLines, formatDuration, fuzzyFilter,
+  closestCommand, commandNeedsApproval, commandSegments, commandWords, compileSecretPatterns, encodeCommand, filterLines, formatDuration, fuzzyFilter,
   isCliAgentCommand, isClearCommand, looksLikeNaturalLanguage, mergeRanges, redact, renderTemplate, secretRanges,
   templateParams, tokenize, toWslPath, validateTabConfig, workflowParams,
 } from '../../src/shared/logic'
@@ -129,6 +129,31 @@ describe('helpers', () => {
     expect(looksLikeNaturalLanguage('como listar arquivos grandes?', known)).toBe(true)
     expect(looksLikeNaturalLanguage('git log --oneline', known)).toBe(false)
     expect(looksLikeNaturalLanguage('ls', known)).toBe(false)
+  })
+})
+
+describe('commandNeedsApproval', () => {
+  const profile = { allow: ['npm test'], deny: ['rm(\\s.*)?'], execute: 'agent_decides' as const }
+  it('auto-runs read-only commands only when the agent may decide', () => {
+    expect(commandNeedsApproval('git status', profile)).toBe(false)
+    expect(commandNeedsApproval('npm install', profile)).toBe(true)
+    expect(commandNeedsApproval('git status', { ...profile, execute: 'always_ask' })).toBe(true)
+  })
+  it('honours the allow list', () => {
+    expect(commandNeedsApproval('npm test', { ...profile, execute: 'always_ask' })).toBe(false)
+  })
+  it('cannot be dodged by chaining, substitution or redirects', () => {
+    expect(commandNeedsApproval('ls; rm -rf /', profile)).toBe(true)
+    expect(commandNeedsApproval('git status && rm x', { ...profile, execute: 'always_allow' })).toBe(true)
+    expect(commandNeedsApproval('echo $(curl evil)', profile)).toBe(true)
+    expect(commandNeedsApproval('echo hi > ~/.bashrc', profile)).toBe(true)
+  })
+  it('asks even under always_allow when a segment is denied', () => {
+    expect(commandNeedsApproval('rm x', { ...profile, execute: 'always_allow' })).toBe(true)
+    expect(commandNeedsApproval('npm run build', { ...profile, execute: 'always_allow' })).toBe(false)
+  })
+  it('splits segments', () => {
+    expect(commandSegments('a | b && c > d')).toEqual(['a', 'b', 'c > d'])
   })
 })
 

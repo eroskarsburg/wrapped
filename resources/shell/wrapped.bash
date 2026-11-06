@@ -58,8 +58,31 @@ __wrapped_precmd() {
     "$(__wrapped_json_escape "${USER:-${USERNAME:-}}")" \
     "$(__wrapped_json_escape "${HOSTNAME:-}")")
   printf '\033]7777;%s\007' "$(__wrapped_hex "$json")"
+  if [ -z "${__wrapped_aliases_sent:-}" ]; then
+    __wrapped_aliases_sent=1
+    __wrapped_send_aliases
+  fi
+  if [ "${WRAPPED_HONOR_PROMPT:-}" = "1" ]; then
+    json=$(printf '{"prompt":"%s"}' "$(__wrapped_json_escape "${__wrapped_user_ps1@P}" | tr -d '\n\r')")
+    printf '\033]7777;%s\007' "$(__wrapped_hex "$json")"
+  fi
 }
 
+__wrapped_send_aliases() {
+  local line name value json='' separator=''
+  while IFS= read -r line; do
+    line=${line#alias }
+    name=${line%%=*}
+    value=${line#*=}
+    value=${value#\'}
+    value=${value%\'}
+    json+="$separator\"$(__wrapped_json_escape "$name")\":\"$(__wrapped_json_escape "$value")\""
+    separator=','
+  done < <(alias -p)
+  printf '\033]7777;%s\007' "$(__wrapped_hex "{\"aliases\":{$json}}")"
+}
+
+__wrapped_user_ps1=$PS1
 PS1=$'\[\033]133;A\007\033]133;B\007\] '
 PS2=''
 # PS0 expands in this shell right after a line is accepted, so the := assignment marks a real run.
