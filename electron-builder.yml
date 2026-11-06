@@ -1,0 +1,21 @@
+appId: dev.eroskarsburg.wrapped
+productName: Wrapped
+directories:
+  output: release
+files:
+  - out/**
+  - package.json
+extraResources:
+  - from: resources/shell
+    to: shell
+asarUnpack:
+  - node_modules/node-pty/**
+  - node_modules/@withfig/autocomplete/**
+npmRebuild: false
+win:
+  target: nsis
+  icon: resources/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
