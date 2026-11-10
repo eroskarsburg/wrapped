@@ -225,6 +225,12 @@ export function TerminalPane({ leaf, active, visible }: { leaf: PaneLeaf; active
           <button title="Interromper (Ctrl+C)" onClick={() => session.interrupt()}><Icon name="stop" size={13} /></button>
         </div>
       )}
+      {session.stalled && !running && exited === null && (
+        <div className="running-bar" data-testid="stalled-bar">
+          <span className="muted">O shell está esperando o resto do comando (aspas ou parênteses sem fechar?). Ctrl+C cancela.</span>
+          <button title="Cancelar (Ctrl+C)" onClick={() => session.cancelPending()}><Icon name="stop" size={13} /></button>
+        </div>
+      )}
       {exited !== null && <div className="exited">Sessão encerrada (código {exited}).</div>}
       {inputPosition !== 'classic' && input}
       <div className={fullScreen ? 'alt-layer on' : 'alt-layer'} ref={altLayer} onClick={() => session.focus()} />

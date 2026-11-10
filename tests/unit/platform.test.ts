@@ -18,6 +18,10 @@ describe('findLinks', () => {
   it('ignores prose and lone slashes', () => {
     expect(targets('and/or e 1/2 e / sozinha')).toEqual([])
   })
+  it('keeps balanced parentheses in URLs and drops a closing one', () => {
+    expect(targets('https://en.wikipedia.org/wiki/Foo_(bar)')).toEqual(['https://en.wikipedia.org/wiki/Foo_(bar)'])
+    expect(targets('(veja https://example.com/a)')).toEqual(['https://example.com/a'])
+  })
   it('does not split a path inside a word', () => {
     expect(targets('foo/bar.ts')).toEqual(['foo/bar.ts'])
     expect(targets('http://x.dev/a/b.js')).toEqual(['http://x.dev/a/b.js'])
@@ -34,6 +38,10 @@ describe('resolveOutputPath', () => {
     expect(resolveOutputPath('/etc/hosts', '/tmp', '/home/eu')).toBe('/etc/hosts')
     expect(resolveOutputPath('~/x', '/tmp', '/home/eu')).toBe('/home/eu/x')
   })
+  it('stops at the root instead of turning the path relative', () => {
+    expect(resolveOutputPath('../../../../x', '/home/eu', '/home/eu')).toBe('/x')
+    expect(resolveOutputPath('..\\..\\..\\x', 'C:\\proj', 'C:\\Users\\eu')).toBe('C:\\x')
+  })
 })
 
 
@@ -41,6 +49,10 @@ describe('resolveOutputPath', () => {
 describe('parseShellHistory', () => {
   it('reads bash history and skips timestamps', () => {
     expect(parseShellHistory('#1700000000\nls -la\n\ngit status\n', 'plain')).toEqual(['ls -la', 'git status'])
+  })
+  it('keeps bash commands that end in a backtick and joins PowerShell continuations', () => {
+    expect(parseShellHistory('echo `date`\nls\n', 'plain')).toEqual(['echo `date`', 'ls'])
+    expect(parseShellHistory('Get-Item `\n-Path x\nls\n', 'powershell')).toEqual(['Get-Item `\n-Path x', 'ls'])
   })
   it('reads zsh extended history with continuation lines', () => {
     expect(parseShellHistory(': 1700000000:0;ls\n: 1700000001:2;for i in 1 2; do\\\necho $i\\\ndone\n', 'zsh'))

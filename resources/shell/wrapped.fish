@@ -5,15 +5,28 @@ function __wrapped_hex
 end
 
 function __wrapped_escape
-    string replace -a '\\' '\\\\' -- "$argv[1]" | string replace -a '"' '\\"'
+    # Control characters are invalid inside a JSON string.
+    string replace -a '\\' '\\\\' -- "$argv[1]" | string replace -a '"' '\\"' \
+        | string replace -a \t '\\t' | string replace -a \r '\\r' | string replace -ra '[[:cntrl:]]' '' \
+        | string join '\\n'
 end
 
 function __wrapped_git_branch
     set -l dir $PWD
     while test -n "$dir"
-        if test -f "$dir/.git/HEAD"
-            set -l head (cat "$dir/.git/HEAD")
-            string replace 'ref: refs/heads/' '' -- $head
+        set -l git "$dir/.git"
+        # Worktrees and submodules have a .git file that points to the real git directory.
+        if test -f "$git"
+            set git (string replace 'gitdir: ' '' -- (head -n1 "$git"))
+            string match -qr '^(/|[A-Za-z]:)' -- $git || set git "$dir/$git"
+        end
+        if test -f "$git/HEAD"
+            set -l head (head -n1 "$git/HEAD")
+            if string match -q 'ref: refs/heads/*' -- $head
+                string replace 'ref: refs/heads/' '' -- $head
+            else
+                string sub -l 7 -- $head
+            end
             return
         end
         test "$dir" = / && return

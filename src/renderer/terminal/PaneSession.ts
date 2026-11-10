@@ -22,6 +22,14 @@ type PtyEvent = RouterEvent | { type: 'raw'; data: string } | { type: 'exit'; co
 
 const NOT_FOUND = /not recognized|não é reconhecido|command not found|não encontrado/i
 const PERSISTED_LINES = 400
+/** How long a submitted command may go without starting before the pane says the shell is waiting. */
+const STALL_MS = 1500
+
+type AgentWaiter = (output: string) => void
+interface Queued {
+  command: string
+  waiter?: AgentWaiter
+}
 
 export function xtermTheme(theme: Theme): ITheme {
   const { normal: n, bright: b } = theme
@@ -69,6 +77,8 @@ export class PaneSession {
   alt = false
   started = false
   lastExit: number | null = null
+  /** A submitted command has not started: the shell waits for more input, such as a closing quote. */
+  stalled = false
   version = 0
   /** Set while a TUI owns the pane; the pane then shows the host full size. */
   readonly host = document.createElement('div')
@@ -79,13 +89,15 @@ export class PaneSession {
   private readonly listeners = new Set<() => void>()
   private readonly disposers: (() => void)[] = []
   private pendingCommand: string | null = null
-  private queue: string[] = []
+  private pendingWaiter: AgentWaiter | null = null
+  private stallTimer: ReturnType<typeof setTimeout> | null = null
+  private queue: Queued[] = []
   private blockCounter = 0
   private cols = 80
   private rows = 24
   private heightFrame = 0
   private finishers: Promise<void> = Promise.resolve()
-  private commandWaiters: { block?: Block; resolve: (output: string) => void }[] = []
+  private commandWaiters: { block: Block; resolve: AgentWaiter }[] = []
 
   constructor(
     readonly id: string,
@@ -202,7 +214,7 @@ export class PaneSession {
 
   private async start(): Promise<void> {
     this.started = true
-    this.queue.push(...(this.profile.startup ?? []), ...this.startup)
+    this.queue.push(...[...(this.profile.startup ?? []), ...this.startup].map((command) => ({ command })))
     const { integrated } = await api.ptyCreate(this.id, this.profile, this.startCwd, this.cols, this.rows)
     this.integrated = integrated
     if (!integrated) {
@@ -243,6 +255,9 @@ export class PaneSession {
         this.exited = event.code
         this.ready = false
         if (this.running) void this.endBlock(null)
+        // Nothing queued will ever run now; the agent must not wait for it.
+        this.abandonPending('a sessão do terminal foi encerrada antes de o comando rodar')
+        for (const item of this.queue.splice(0)) item.waiter?.('exit code: desconhecido\n(a sessão do terminal foi encerrada antes de o comando rodar)')
         this.notify()
         break
     }
@@ -250,9 +265,26 @@ export class PaneSession {
 
   private onPrompt(): void {
     this.ready = true
+    // A prompt with no block in between: the shell never ran the command (Ctrl+C on an open quote,
+    // a syntax error). It must not label the next block, and the agent gets an answer.
+    this.abandonPending('o shell não executou o comando (erro de sintaxe ou entrada cancelada)')
     const next = this.queue.shift()
     this.notify()
-    if (next) this.submit(next)
+    if (next) this.send(next.command, next.waiter)
+  }
+
+  private clearStall(): void {
+    if (this.stallTimer) clearTimeout(this.stallTimer)
+    this.stallTimer = null
+    this.stalled = false
+  }
+
+  private abandonPending(reason: string): void {
+    this.clearStall()
+    if (this.pendingCommand === null) return
+    this.pendingCommand = null
+    this.pendingWaiter?.(`exit code: desconhecido\n(${reason})`)
+    this.pendingWaiter = null
   }
 
   private beginBlock(): void {
@@ -269,9 +301,10 @@ export class PaneSession {
       running: true,
     }
     this.pendingCommand = null
+    this.clearStall()
     this.blocks = [...this.blocks, block]
-    const waiter = this.commandWaiters.find((w) => !w.block)
-    if (waiter) waiter.block = block
+    if (this.pendingWaiter) this.commandWaiters.push({ block, resolve: this.pendingWaiter })
+    this.pendingWaiter = null
     this.notify()
     this.hooks.onRunningChange()
     this.scheduleHeight()
@@ -331,28 +364,49 @@ export class PaneSession {
 
   /** Runs a command now, or as soon as the shell is back at a prompt. */
   submit(command: string): void {
-    if (!command.trim()) return
+    this.send(command)
+  }
+
+  private send(command: string, waiter?: AgentWaiter): void {
+    if (!command.trim()) {
+      waiter?.('exit code: desconhecido\n(comando vazio, nada foi executado)')
+      return
+    }
     if (!this.integrated) {
       void api.ptySubmit(this.id, command)
+      // Classic mode has no blocks, so there is no output to hand back.
+      waiter?.('exit code: desconhecido\n(o comando foi enviado a um terminal sem integração; a saída não pode ser lida)')
+      return
+    }
+    if (this.exited !== null) {
+      waiter?.('exit code: desconhecido\n(a sessão do terminal já foi encerrada)')
       return
     }
     if (!this.ready || this.running) {
-      this.queue.push(command)
+      this.queue.push({ command, waiter })
       return
     }
     this.ready = false
     this.pendingCommand = command
+    this.pendingWaiter = waiter ?? null
+    this.clearStall()
+    this.stallTimer = setTimeout(() => {
+      this.stallTimer = null
+      if (this.pendingCommand === null || this.running) return
+      this.stalled = true
+      this.notify()
+    }, STALL_MS)
     this.hooks.onCommandSubmitted(this, command)
     this.notify()
     void api.ptySubmit(this.id, command)
   }
 
-  /** Runs a command for the agent and resolves with its output once the block ends. */
+  /**
+   * Runs a command for the agent and resolves with its output once its own block ends; a command
+   * queued behind others waits for its turn instead of taking the output of whichever starts first.
+   */
   runForAgent(command: string): Promise<string> {
-    return new Promise((resolve) => {
-      this.commandWaiters.push({ resolve })
-      this.submit(command)
-    })
+    return new Promise((resolve) => this.send(command, resolve))
   }
 
   get isCliAgent(): boolean {
@@ -387,6 +441,11 @@ export class PaneSession {
 
   interrupt(): void {
     this.sendRaw('\x03')
+  }
+
+  /** Cancels a command the shell is still reading (an open quote), bringing the prompt back. */
+  cancelPending(): void {
+    if (this.pendingCommand !== null && !this.running) this.interrupt()
   }
 
   private handleKey(event: KeyboardEvent): boolean {
@@ -452,6 +511,8 @@ export class PaneSession {
   }
 
   dispose(): void {
+    this.abandonPending('o pane foi fechado')
+    for (const item of this.queue.splice(0)) item.waiter?.('exit code: desconhecido\n(o pane foi fechado)')
     for (const dispose of this.disposers) dispose()
     void api.ptyKill(this.id)
     this.term.dispose()

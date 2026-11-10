@@ -86,6 +86,15 @@ code, pre { font-family: var(--font-mono); }
   opacity: var(--app-image-opacity);
   pointer-events: none;
 }
+.config-error {
+  flex: none;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--ansi-1);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
 .titlebar {
   position: relative;
   height: 36px;

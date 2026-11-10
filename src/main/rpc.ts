@@ -33,6 +33,7 @@ export const handlers = {
 
   // Configuration
   loadSettings: () => store.loadSettings(),
+  settingsError: () => store.settingsError(),
   saveSettings(_: WebContents, settings: Settings) {
     store.saveSettings(settings)
     applySettings(settings)

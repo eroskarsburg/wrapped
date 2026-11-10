@@ -18,14 +18,27 @@ __wrapped_json_escape() {
   local s=$1
   s=${s//\\/\\\\}
   s=${s//\"/\\\"}
+  # Control characters are invalid inside a JSON string: a tab in a directory name would make
+  # the UI drop the whole message and keep showing the previous directory.
+  s=${s//$'\t'/\\t}
+  s=${s//$'\n'/\\n}
+  s=${s//$'\r'/\\r}
+  s=${s//[[:cntrl:]]/}
   printf '%s' "$s"
 }
 
 __wrapped_git_branch() {
   local dir=$PWD head
   while [ -n "$dir" ]; do
-    if [ -f "$dir/.git/HEAD" ]; then
-      read -r head < "$dir/.git/HEAD"
+    local git=$dir/.git
+    # Worktrees and submodules have a .git file that points to the real git directory.
+    if [ -f "$git" ]; then
+      read -r git < "$git"
+      git=${git#gitdir: }
+      case $git in /*|[A-Za-z]:*) ;; *) git=$dir/$git ;; esac
+    fi
+    if [ -f "$git/HEAD" ]; then
+      read -r head < "$git/HEAD"
       case $head in
         "ref: refs/heads/"*) printf '%s' "${head#ref: refs/heads/}" ;;
         *) printf '%s' "${head:0:7}" ;;
@@ -49,8 +62,8 @@ __wrapped_cwd() {
 # First in PROMPT_COMMAND, while $? still holds the command's status.
 __wrapped_precmd() {
   local code=$?
-  if [ -n "${__wrapped_ran:-}" ]; then printf '\033]133;D;%s\007' "$code"; fi
-  __wrapped_ran=
+  if (( ${__wrapped_ran:-0} > 0 )); then printf '\033]133;D;%s\007' "$code"; fi
+  __wrapped_ran=0
   local json
   json=$(printf '{"cwd":"%s","git":"%s","shell":"bash","venv":"%s","user":"%s","host":"%s"}' \
     "$(__wrapped_json_escape "$(__wrapped_cwd)")" \
@@ -99,10 +112,13 @@ __wrapped_user_ps1=$PS1
 __wrapped_ps1=$'\[\033]133;A\007\033]133;B\007\] '
 PS1=$__wrapped_ps1
 PS2=''
-# PS0 expands in this shell right after a line is accepted, so the := assignment marks a real run.
-# Its visible output lands before the clear and is discarded along with the echo. The user's own
-# PS0 stays in front: starship times commands with it.
-PS0=${PS0:-}'${__wrapped_ran:=1}'$'\033[2J\033[3J\033[H\033]133;C\007'
+# PS0 expands in this shell right after a line is accepted, and once more for each further command
+# of a pasted multi-line script. The arithmetic subscript runs in this shell too: it counts the
+# expansions, so the clear and the C marker come out the first time only (one block per line),
+# and the count tells the next prompt that something ran. The user's own PS0 stays in front:
+# starship times commands with it.
+__wrapped_start=($'\033[2J\033[3J\033[H\033]133;C\007')
+PS0=${PS0:-}'${__wrapped_start[__wrapped_ran++]}'
 # The user's hooks (mise, direnv, starship, zoxide) stay in PROMPT_COMMAND, where tools such as
 # zoxide look for them, between the two functions above.
 if [ "${BASH_VERSINFO[0]}" -gt 5 ] || { [ "${BASH_VERSINFO[0]}" -eq 5 ] && [ "${BASH_VERSINFO[1]}" -ge 1 ]; }; then

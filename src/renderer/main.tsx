@@ -67,6 +67,7 @@ function App() {
   const reloadConfig = useApp((state) => state.reloadConfig)
   const vertical = useApp((state) => state.settings.appearance.verticalTabs)
   const agentOpen = useApp((state) => state.agentOpen)
+  const settingsError = useApp((state) => state.settingsError)
   const activeTab = useApp((state) => state.tabs.find((tab) => tab.id === state.activeTabId))
   useAppearance()
 
@@ -91,6 +92,12 @@ function App() {
       <header className="titlebar">
         {vertical ? <span className="titlebar-name">{activeTab?.title ?? 'Wrapped'}</span> : <HorizontalTabs />}
       </header>
+      {settingsError && (
+        <div className="config-error" role="alert" data-testid="settings-error">
+          O settings.toml tem um erro e está sendo ignorado: {settingsError}. Ao salvar uma configuração aqui, o arquivo
+          atual é guardado como settings.toml.broken-*.
+        </div>
+      )}
       <div className="app-body">
         <Rail />
         <Sidebar />

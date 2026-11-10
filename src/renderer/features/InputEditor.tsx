@@ -316,6 +316,15 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
       },
       { key: 'Ctrl-Space', run: () => { void openCompletions(true); return true } },
       {
+        // While the shell still reads a submitted command (an open quote), Ctrl+C cancels it there.
+        key: 'Ctrl-c',
+        run(editor) {
+          if (session.ready || !editor.state.selection.main.empty) return false
+          session.cancelPending()
+          return true
+        },
+      },
+      {
         key: 'Escape',
         run() {
           if (popupRef.current) {

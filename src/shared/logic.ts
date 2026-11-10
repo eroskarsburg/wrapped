@@ -307,9 +307,11 @@ export function filterLines(lines: string[], options: FilterOptions): number[] {
 
 /** Encodes a command for the shell's line editor; newlines must not read as Enter. */
 export function encodeCommand(command: string, kind: string): string {
-  const text = command.replace(/\r\n/g, '\n').trimEnd()
+  // A lone \r would read as Enter and run the rest as a second command.
+  const text = command.replace(/\r\n?/g, '\n').trimEnd()
   if (kind === 'powershell') return `${text.replace(/\t/g, '    ').replace(/\n/g, '\x1bj')}\r`
-  if (kind === 'cmd' || !text.includes('\n')) return `${text}\r`
+  // A literal tab typed into readline triggers completion, so it also needs bracketed paste.
+  if (kind === 'cmd' || !/[\n\t]/.test(text)) return `${text}\r`
   return `\x1b[200~${text}\x1b[201~\r`
 }
 
@@ -320,10 +322,14 @@ export function isClearCommand(command: string): boolean {
 export function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
   const seconds = ms / 1000
-  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ${Math.round(seconds % 60)}s`
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+  if (seconds < 9.95) return `${seconds.toFixed(1)}s`
+  // Rounded once up front, so that 59.6s reads as 1m 0s and never as "60s" or "1m 60s".
+  const total = Math.round(seconds)
+  if (total < 60) return `${total}s`
+  const minutes = Math.floor(total / 60)
+  if (minutes < 60) return `${minutes}m ${total % 60}s`
+  const totalMinutes = Math.round(seconds / 60)
+  return `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`
 }
 
 export function toWslPath(path: string): string {
@@ -334,7 +340,21 @@ export function toWslPath(path: string): string {
 
 // --- Agent command policy -------------------------------------------------------------------
 
-const READ_ONLY = /^(?:ls|dir|pwd|cat|type|head|tail|wc|echo|which|where|whoami|date|git (?:status|log|diff|show|branch)|Get-(?:ChildItem|Content|Location|Date|Process|Command))(?:\s|$)/i
+const READ_ONLY = /^(?:ls|dir|pwd|cat|type|head|tail|wc|echo|which|where|whoami|date|git (?:status|log|diff|show)|Get-(?:ChildItem|Content|Location|Date|Process|Command))(?:\s|$)/i
+/** Options that make an otherwise read-only command write files, run programs or change state. */
+const WRITING_OPTION = /(?:^|\s)(?:--output(?:=|\s|$)|--ext-diff|--textconv)/
+/** `date -s` sets the clock. */
+const DATE_SET = /^date\s(?:.*\s)?(?:-s|--set)(?:=|\s|$)/i
+/** `git branch` lists branches only without arguments or with listing flags; -D deletes one. */
+const GIT_BRANCH_LIST = /^git branch(?:\s+(?:-a|-r|-v|-vv|--all|--remotes|--list|--show-current|--verbose))*$/i
+
+function isReadOnly(segment: string): boolean {
+  if (GIT_BRANCH_LIST.test(segment)) return true
+  return READ_ONLY.test(segment) && !WRITING_OPTION.test(segment) && !DATE_SET.test(segment)
+}
+
+/** Wrappers that run the command after them, so that a deny rule still sees the real program. */
+const COMMAND_PREFIXES = new Set(['sudo', 'command', 'builtin', 'exec', 'env', 'nohup', 'time', 'nice', 'xargs', 'doas'])
 
 function matchesAny(patterns: string[], command: string): boolean {
   return patterns.some((pattern) => {
@@ -346,17 +366,45 @@ function matchesAny(patterns: string[], command: string): boolean {
   })
 }
 
-/** Splits on shell separators, so that a rule cannot be dodged by chaining commands. */
+const cleanWord = (word: string) => word.replace(/["'\\]/g, '')
+const programName = (word: string) => cleanWord(word).replace(/^.*[\\/]/, '').replace(/\.exe$/i, '')
+
+/**
+ * Forms of a segment that a deny rule is checked against: as written, with the program name bare
+ * (`/bin/rm`, `"rm"`, `\rm`), and what runs after wrappers or assignments (`sudo -u x rm`,
+ * `FOO=1 rm`, `xargs rm`). Erring towards more forms only means asking more often.
+ */
+export function denyCandidates(segment: string): string[] {
+  const words = segment.trim().split(/\s+/).filter(Boolean)
+  const forms = new Set([segment.trim()])
+  const from = (index: number) => [programName(words[index]), ...words.slice(index + 1)].join(' ')
+  if (words.length) forms.add(from(0))
+  let wrapped = false
+  for (let i = 0; i < words.length; i++) {
+    const word = cleanWord(words[i])
+    if (COMMAND_PREFIXES.has(word.toLowerCase()) || /^\w+=/.test(word)) {
+      wrapped = true
+      continue
+    }
+    if (wrapped && !word.startsWith('-')) forms.add(from(i))
+    if (!wrapped) break
+  }
+  return [...forms]
+}
+
+/** Splits on shell separators and line breaks, so that a rule cannot be dodged by chaining commands. */
 export function commandSegments(command: string): string[] {
   const parts: string[] = []
-  let cursor = 0
-  for (const token of tokenize(command)) {
-    if (token.type === 'operator' && !REDIRECTS.test(token.text)) {
-      parts.push(command.slice(cursor, token.from))
-      cursor = token.to
+  for (const line of command.split(/\r\n?|\n/)) {
+    let cursor = 0
+    for (const token of tokenize(line)) {
+      if (token.type === 'operator' && !REDIRECTS.test(token.text)) {
+        parts.push(line.slice(cursor, token.from))
+        cursor = token.to
+      }
     }
+    parts.push(line.slice(cursor))
   }
-  parts.push(command.slice(cursor))
   return parts.map((part) => part.trim()).filter(Boolean)
 }
 
@@ -366,13 +414,14 @@ export function commandNeedsApproval(
 ): boolean {
   const segments = commandSegments(command)
   if (segments.length === 0) return true
-  if (segments.some((segment) => matchesAny(profile.deny, segment))) return true
-  // Substitutions and redirects run or write things the segment text does not show.
-  if (/[`\n]|\$\(|>/.test(command)) return profile.execute !== 'always_allow'
+  if (segments.some((segment) => denyCandidates(segment).some((form) => matchesAny(profile.deny, form)))) return true
+  // Substitutions (including process substitution) and redirects run or write things the
+  // segment text does not show.
+  if (/[`\n\r]|\$\(|[<>]\(|>/.test(command)) return profile.execute !== 'always_allow'
   if (segments.every((segment) => matchesAny(profile.allow, segment))) return false
   if (profile.execute === 'always_allow') return false
   if (profile.execute === 'always_ask') return true
-  return !segments.every((segment) => READ_ONLY.test(segment))
+  return !segments.every(isReadOnly)
 }
 
 const CLI_AGENTS = ['claude', 'codex', 'gemini', 'aider', 'opencode', 'copilot']
@@ -407,7 +456,8 @@ export interface OutputLink {
 // "and/or" is not taken for one. Any of them may carry a :line:column suffix.
 const LINK_PATTERN = new RegExp(
   '(?:' + [
-    String.raw`https?:\/\/[^\s"'<>)\]]+`,
+    // Parentheses only when balanced, as in Wikipedia links; a lone ")" closes the sentence.
+    String.raw`https?:\/\/(?:[^\s"'<>()\]]|\([^\s"'<>()]*\))+`,
     String.raw`(?<![\w/])[A-Za-z]:[\\/][^\s"'<>|:*?]+`,
     String.raw`(?<![\w.~/-])(?:file:\/\/)?~?\/(?:[\w.@+-]+\/)*[\w.@+-]+\/?`,
     String.raw`(?<![\w.~/-])(?:\.{1,2}[\\/])?(?:[\w.@+-]+[\\/])+[\w@+-]+(?:\.[A-Za-z0-9]{1,8})+`,
@@ -460,9 +510,12 @@ export function resolveOutputPath(target: string, cwd: string | undefined, home:
   if (/^(?:[A-Za-z]:)?[\\/]/.test(target) || !cwd) return target
   const sep = cwd.includes('\\') && !cwd.includes('/') ? '\\' : '/'
   const parts = cwd.replace(/[\\/]+$/, '').split(/[\\/]/)
+  // The root ("" before a leading slash, or "C:") stays, however many ".." there are.
+  const rooted = parts[0] === '' || /^[A-Za-z]:$/.test(parts[0])
   for (const part of target.split(/[\\/]/)) {
-    if (part === '..') parts.pop()
-    else if (part && part !== '.') parts.push(part)
+    if (part === '..') {
+      if (!rooted || parts.length > 1) parts.pop()
+    } else if (part && part !== '.') parts.push(part)
   }
   return parts.join(sep) || sep
 }
@@ -483,7 +536,7 @@ export function unmetafy(bytes: Uint8Array): Uint8Array {
 }
 
 /** Commands from a shell's own history file, oldest first. */
-export function parseShellHistory(text: string, format: 'plain' | 'zsh' | 'fish'): string[] {
+export function parseShellHistory(text: string, format: 'plain' | 'powershell' | 'zsh' | 'fish'): string[] {
   const commands: string[] = []
   if (format === 'fish') {
     // Entries look like "- cmd: git status", with backslash escapes for newlines.
@@ -500,8 +553,12 @@ export function parseShellHistory(text: string, format: 'plain' | 'zsh' | 'fish'
       // Extended history prefixes each entry with ": <start>:<elapsed>;".
       line = line.replace(/^: \d+:\d+;/, '')
       while (line.endsWith('\\') && i + 1 < lines.length) line = `${line.slice(0, -1)}\n${lines[++i]}`
-    } else if (line.endsWith('`') || /^#\d+$/.test(line)) {
-      // PowerShell continuation lines and bash timestamps.
+    } else if (format === 'powershell') {
+      // PSReadLine writes a multi-line command with a backtick ending each line but the last. In
+      // bash, by contrast, a trailing backtick just closes a substitution.
+      while (line.endsWith('`') && i + 1 < lines.length) line = `${line}\n${lines[++i]}`
+    } else if (format === 'plain' && /^#\d+$/.test(line)) {
+      // bash timestamps, written with HISTTIMEFORMAT.
       continue
     }
     if (line.trim()) commands.push(line)

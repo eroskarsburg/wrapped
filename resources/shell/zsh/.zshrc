@@ -17,14 +17,26 @@ __wrapped_hex() {
 __wrapped_json_escape() {
   local s=${1//\\/\\\\}
   s=${s//\"/\\\"}
+  # Control characters are invalid inside a JSON string.
+  s=${s//$'\t'/\\t}
+  s=${s//$'\n'/\\n}
+  s=${s//$'\r'/\\r}
+  s=${s//[[:cntrl:]]/}
   printf '%s' "$s"
 }
 
 __wrapped_git_branch() {
   local dir=$PWD head
   while [[ -n $dir ]]; do
-    if [[ -f $dir/.git/HEAD ]]; then
-      read -r head < "$dir/.git/HEAD"
+    local git=$dir/.git
+    # Worktrees and submodules have a .git file that points to the real git directory.
+    if [[ -f $git ]]; then
+      read -r git < "$git"
+      git=${git#gitdir: }
+      [[ $git == /* || $git == [A-Za-z]:* ]] || git=$dir/$git
+    fi
+    if [[ -f $git/HEAD ]]; then
+      read -r head < "$git/HEAD"
       case $head in
         "ref: refs/heads/"*) printf '%s' "${head#ref: refs/heads/}" ;;
         *) printf '%s' "${head:0:7}" ;;

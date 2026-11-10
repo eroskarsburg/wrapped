@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  closestCommand, commandNeedsApproval, fontStack, parseFcList, primaryFamily, commandSegments, commandWords, compileSecretPatterns, encodeCommand, filterLines, formatDuration, fuzzyFilter,
+  closestCommand, commandNeedsApproval, denyCandidates, fontStack, parseFcList, primaryFamily, commandSegments, commandWords, compileSecretPatterns, encodeCommand, filterLines, formatDuration, fuzzyFilter,
   isCliAgentCommand, isClearCommand, looksLikeNaturalLanguage, mergeRanges, redact, renderTemplate, secretRanges,
   templateParams, tokenize, toWslPath, validateTabConfig, workflowParams,
 } from '../../src/shared/logic'
@@ -104,6 +104,13 @@ describe('encodeCommand', () => {
     expect(encodeCommand('a\nb', 'bash')).toBe('\x1b[200~a\nb\x1b[201~\r')
     expect(encodeCommand('a', 'bash')).toBe('a\r')
   })
+  it('never lets a lone carriage return run a second command', () => {
+    expect(encodeCommand('echo um\recho dois', 'bash')).toBe('\x1b[200~echo um\necho dois\x1b[201~\r')
+    expect(encodeCommand('a\rb', 'powershell')).toBe('a\x1bjb\r')
+  })
+  it('pastes a line with a tab, which readline would otherwise complete', () => {
+    expect(encodeCommand('echo "A\tB"', 'bash')).toBe('\x1b[200~echo "A\tB"\x1b[201~\r')
+  })
 })
 
 describe('helpers', () => {
@@ -116,6 +123,13 @@ describe('helpers', () => {
     expect(formatDuration(1500)).toBe('1.5s')
     expect(formatDuration(65000)).toBe('1m 5s')
     expect(formatDuration(3660000)).toBe('1h 1m')
+  })
+  it('never shows 60 seconds or 60 minutes', () => {
+    expect(formatDuration(9960)).toBe('10s')
+    expect(formatDuration(59600)).toBe('1m 0s')
+    expect(formatDuration(119600)).toBe('2m 0s')
+    expect(formatDuration(3599900)).toBe('1h 0m')
+    expect(formatDuration(7199000)).toBe('2h 0m')
   })
   it('translates Windows paths for WSL', () => {
     expect(toWslPath('C:\\Users\\Eros\\a.sh')).toBe('/mnt/c/Users/Eros/a.sh')
@@ -154,6 +168,28 @@ describe('commandNeedsApproval', () => {
   })
   it('splits segments', () => {
     expect(commandSegments('a | b && c > d')).toEqual(['a', 'b', 'c > d'])
+    expect(commandSegments('ls\rrm -rf x\ndate')).toEqual(['ls', 'rm -rf x', 'date'])
+  })
+  it('cannot be dodged by line breaks, carriage returns or process substitution', () => {
+    expect(commandNeedsApproval('ls\rrm -rf x', profile)).toBe(true)
+    expect(commandNeedsApproval('ls\nrm -rf x', { ...profile, execute: 'always_allow' })).toBe(true)
+    expect(commandNeedsApproval('cat <(curl evil)', profile)).toBe(true)
+    expect(commandNeedsApproval('diff a >(tee x)', profile)).toBe(true)
+  })
+  it('does not treat writing options or branch deletion as read-only', () => {
+    expect(commandNeedsApproval('git diff --output=/home/eu/.bashrc', profile)).toBe(true)
+    expect(commandNeedsApproval('git branch -D main', profile)).toBe(true)
+    expect(commandNeedsApproval('date -s "2020-01-01"', profile)).toBe(true)
+    expect(commandNeedsApproval('git branch -a', profile)).toBe(false)
+    expect(commandNeedsApproval('git diff --stat', profile)).toBe(false)
+  })
+  it('applies deny rules to the real program behind paths, quotes and wrappers', () => {
+    const allow = { ...profile, execute: 'always_allow' as const }
+    for (const command of ['/bin/rm -rf x', '"rm" -rf x', '\\rm x', 'sudo rm x', 'sudo -u root rm x', 'FOO=1 rm x', 'command rm x', 'find . | xargs rm']) {
+      expect(commandNeedsApproval(command, allow), command).toBe(true)
+    }
+    expect(commandNeedsApproval('echo rm', allow)).toBe(false)
+    expect(denyCandidates('/usr/bin/rm -rf x')).toContain('rm -rf x')
   })
 })
 

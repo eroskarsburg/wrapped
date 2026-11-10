@@ -35,7 +35,8 @@ export function PromptChips({ session }: { session: PaneSession }) {
   if (mode === 'shell' && meta.prompt?.trim()) return <pre className="shell-prompt">{stripAnsi(meta.prompt)}</pre>
 
   const values: Record<string, string | undefined> = {
-    cwd: meta.cwd?.replace(/^.*[\\/](?=[^\\/]+[\\/][^\\/]+$)/, '…\\'),
+    // Keeps the path's own separator: "…/proj/src" on Linux, "…\proj\src" on Windows.
+    cwd: meta.cwd?.replace(/^.*([\\/])(?=[^\\/]+[\\/][^\\/]+$)/, '…$1'),
     git: meta.git,
     venv: meta.venv?.split(/[\\/]/).pop(),
     node: nodeVersion,

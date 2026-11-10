@@ -83,6 +83,8 @@ interface AppState {
   agentDraft: { text: string; id: number } | null
   inputDraft: { paneId: string; text: string; id: number } | null
   loaded: boolean
+  /** Syntax error in settings.toml, which the app then ignores in favour of the defaults. */
+  settingsError: string | null
   nodeVersion?: string
   /** Bumped when a command starts or ends, for views that summarize sessions. */
   sessionTick: number
@@ -264,6 +266,7 @@ export const useApp = create<AppState>((set, get) => ({
   agentDraft: null,
   inputDraft: null,
   loaded: false,
+  settingsError: null,
   sessionTick: 0,
 
   async load() {
@@ -288,12 +291,12 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   async reloadConfig() {
-    const [settings, themes, keybindings, knowledge, notebooks, tabConfigs, profiles] = await Promise.all([
+    const [settings, themes, keybindings, knowledge, notebooks, tabConfigs, profiles, settingsError] = await Promise.all([
       api.loadSettings(), api.listThemes(), api.loadKeybindings(), api.listKnowledge(), api.listNotebooks(),
-      api.listTabConfigs(), api.listProfiles(),
+      api.listTabConfigs(), api.listProfiles(), api.settingsError(),
     ])
     set({
-      settings, themes, keybindings, notebooks, tabConfigs, profiles,
+      settings, themes, keybindings, notebooks, tabConfigs, profiles, settingsError,
       workflows: knowledge.workflows, prompts: knowledge.prompts, envCollections: knowledge.env,
     })
   },

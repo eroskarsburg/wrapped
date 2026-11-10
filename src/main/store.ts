@@ -1,7 +1,7 @@
 import { safeStorage } from 'electron'
-import { existsSync, mkdirSync, promises as fs, readFileSync, watch, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, promises as fs, readFileSync, watch, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { parseShellHistory, unmetafy, validateTabConfig } from '../shared/logic'
@@ -76,7 +76,29 @@ export function loadSettings(): Settings {
   }
 }
 
+/** Why settings.toml could not be read, or null when it is fine or does not exist. */
+export function settingsError(): string | null {
+  let text: string
+  try {
+    text = readFileSync(conf('settings.toml'), 'utf8')
+  } catch {
+    return null
+  }
+  try {
+    parseToml(text)
+    return null
+  } catch (error) {
+    return String(error instanceof Error ? error.message : error).split('\n')[0]
+  }
+}
+
 export function saveSettings(settings: Settings): void {
+  // The app runs on the defaults while the file has a syntax error; writing over it would throw
+  // away everything the user had in it, so it is kept next to the new one first.
+  if (settingsError()) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    copyFileSync(conf('settings.toml'), conf(`settings.toml.broken-${stamp}`))
+  }
   writeFileSync(conf('settings.toml'), stringifyToml(settings as unknown as Record<string, unknown>))
 }
 
@@ -153,7 +175,9 @@ export async function saveKnowledge(kind: KnowledgeKind, item: { name: string; f
 }
 
 export async function deleteConfigFile(file: string): Promise<void> {
-  if (!file.startsWith(configDir)) throw new Error('fora do diretório de configuração')
+  // A prefix check alone lets "<config>/../x" and "<config>-outro/x" through.
+  const inside = relative(resolve(configDir), resolve(file))
+  if (!inside || inside.startsWith('..') || isAbsolute(inside)) throw new Error('fora do diretório de configuração')
   await fs.rm(file, { force: true })
 }
 
@@ -240,9 +264,9 @@ export async function appendHistory(entry: HistoryEntry): Promise<void> {
 export async function loadHistory(): Promise<HistoryEntry[]> {
   const entries: HistoryEntry[] = []
   const zdot = process.env.ZDOTDIR || homedir()
-  const imports: [string, 'plain' | 'zsh' | 'fish'][] = [
-    [process.env.APPDATA ? join(process.env.APPDATA, 'Microsoft', 'Windows', 'PowerShell', 'PSReadLine', 'ConsoleHost_history.txt') : '', 'plain'],
-    [join(homedir(), '.local', 'share', 'powershell', 'PSReadLine', 'ConsoleHost_history.txt'), 'plain'],
+  const imports: [string, 'plain' | 'powershell' | 'zsh' | 'fish'][] = [
+    [process.env.APPDATA ? join(process.env.APPDATA, 'Microsoft', 'Windows', 'PowerShell', 'PSReadLine', 'ConsoleHost_history.txt') : '', 'powershell'],
+    [join(homedir(), '.local', 'share', 'powershell', 'PSReadLine', 'ConsoleHost_history.txt'), 'powershell'],
     [join(homedir(), '.bash_history'), 'plain'],
     [join(zdot, '.zsh_history'), 'zsh'],
     [join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'fish', 'fish_history'), 'fish'],
