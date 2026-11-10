@@ -1,7 +1,7 @@
 {
   "name": "wrapped",
   "version": "0.1.0",
-  "description": "Terminal moderno para Windows com blocos, perfis personalizados e input editor próprio.",
+  "description": "Terminal moderno para Windows e Linux com blocos, perfis personalizados e input editor próprio.",
   "author": "Eros Karsburg",
   "license": "MIT",
   "private": true,
@@ -12,7 +12,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "dist": "npm run build && electron-builder --win"
+    "dist": "npm run build && electron-builder --win",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "rebuild:pty": "node scripts/rebuild-pty.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",

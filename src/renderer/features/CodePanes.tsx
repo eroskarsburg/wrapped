@@ -59,6 +59,11 @@ export function EditorPane({ leaf, onClose }: { leaf: PaneLeaf; onClose(): void 
       }),
     })
     view.current = editor
+    if (leaf.line && leaf.line <= editor.state.doc.lines) {
+      const at = editor.state.doc.line(leaf.line).from
+      editor.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: 'center' }) })
+      editor.focus()
+    }
     return () => editor.destroy()
   }, [text])
   return (

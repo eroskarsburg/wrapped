@@ -203,6 +203,8 @@ export interface PaneLeaf {
   profileId?: string
   cwd?: string
   file?: string
+  /** Line to show when an editor pane opens. */
+  line?: number
   startup?: string[]
 }
 

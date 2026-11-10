@@ -24,7 +24,7 @@ end
 
 function __wrapped_meta
     set -l json (printf '{"cwd":"%s","git":"%s","shell":"fish","venv":"%s","user":"%s","host":"%s"}' \
-        (__wrapped_escape "$PWD") (__wrapped_escape "(__wrapped_git_branch)") \
+        (__wrapped_escape "$PWD") (__wrapped_escape (__wrapped_git_branch)) \
         (__wrapped_escape "$VIRTUAL_ENV") (__wrapped_escape "$USER") (__wrapped_escape "$hostname"))
     printf '\e]7777;%s\a' (__wrapped_hex "$json")
 end

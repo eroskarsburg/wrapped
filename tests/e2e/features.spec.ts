@@ -3,9 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { input, launch, run, waitReady, type App } from './helpers'
-
-const BASE = '[terminal]\ndefaultProfile = "powershell"\nrestoreSession = false\n'
+import { BASE, POSIX, SHELL, countTo, input, isWindows, launch, run, waitReady, type App } from './helpers'
 
 let wrapped: App
 test.afterEach(async () => {
@@ -47,7 +45,7 @@ test('splits panes and syncs input between them', async () => {
 test('filters a block and finds across blocks', async () => {
   wrapped = await launch({ settings: BASE })
   const { page } = wrapped
-  const block = await run(page, '1..50 | % { "item $_" }')
+  const block = await run(page, countTo(50))
   await block.locator('.block-header').hover()
   await block.locator('button[title="Filtrar saída"]').click()
   await block.locator('.block-filter > input').fill('item 4')
@@ -217,11 +215,10 @@ test('custom profiles set env, startup commands and their own theme', async () =
   mkdirSync(join(home, 'profiles'), { recursive: true })
   writeFileSync(join(home, 'profiles', 'meu.toml'), `
 name = "Meu terminal"
-command = "powershell.exe"
-kind = "powershell"
+${isWindows ? 'command = "powershell.exe"\nkind = "powershell"' : 'command = "bash"\nkind = "bash"'}
 theme = "dracula"
 color = "#ff00ff"
-startup = ["echo perfil-$env:MINHA_VAR"]
+startup = ["echo perfil-${isWindows ? '$env:' : '$'}MINHA_VAR"]
 
 [env]
 MINHA_VAR = "funciona"
@@ -289,7 +286,7 @@ test('supports vim keys in the input', async () => {
 
 test('restores tabs and blocks after a restart', async () => {
   const home = mkdtempSync(join(tmpdir(), 'wrapped-e2e-'))
-  const first = await launch({ settings: '[terminal]\ndefaultProfile = "powershell"\n', home, keepHome: true })
+  const first = await launch({ settings: `[terminal]\ndefaultProfile = "${SHELL}"\n`, home, keepHome: true })
   await run(first.page, 'echo sobrevive-ao-reinicio')
   await first.page.waitForTimeout(1500)
   await first.close()
@@ -298,7 +295,7 @@ test('restores tabs and blocks after a restart', async () => {
 })
 
 test('shows output printed while idle as a background block', async () => {
-  wrapped = await launch({ settings: '[terminal]\ndefaultProfile = "git-bash"\nrestoreSession = false\n' })
+  wrapped = await launch({ settings: `[terminal]\ndefaultProfile = "${POSIX}"\nrestoreSession = false\n` })
   const { page } = wrapped
   await run(page, '(sleep 1; echo tarefa-em-segundo-plano) &')
   await expect(page.locator('.block.background', { hasText: 'tarefa-em-segundo-plano' })).toBeVisible({ timeout: 10_000 })
@@ -329,20 +326,21 @@ test('opens files, renders markdown and shows git changes', async () => {
 })
 
 test('lets programs write the clipboard through OSC 52', async () => {
-  wrapped = await launch({ settings: '[terminal]\ndefaultProfile = "git-bash"\nrestoreSession = false\n' })
+  wrapped = await launch({ settings: `[terminal]\ndefaultProfile = "${POSIX}"\nrestoreSession = false\n` })
   const { page, app } = wrapped
   await run(page, `printf '\\033]52;c;%s\\007' "$(printf osc52-ok | base64)"`)
   await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe('osc52-ok')
 })
 
 test('turns URLs into links and selects paths as a unit', async () => {
-  wrapped = await launch({ settings: `[terminal]\ncopyOnSelect = true\ndefaultProfile = "powershell"\nrestoreSession = false\n` })
+  wrapped = await launch({ settings: `[terminal]\ncopyOnSelect = true\ndefaultProfile = "${SHELL}"\nrestoreSession = false\n` })
   const { page, app } = wrapped
-  const block = await run(page, 'echo "veja https://example.com/docs e C:\\Temp\\arquivo.txt"')
+  const path = isWindows ? 'C:\\Temp\\arquivo.txt' : '/tmp/pasta/arquivo.txt'
+  const block = await run(page, `echo "veja https://example.com/docs e ${path}"`)
   await expect(block.locator('a.link')).toHaveCount(2)
   await block.locator('a.link').nth(1).dblclick()
-  await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('C:\\Temp\\arquivo.txt')
-  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe('C:\\Temp\\arquivo.txt')
+  await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe(path)
+  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe(path)
   await expect(page.locator('.code-pane')).toHaveCount(0)
 })
 
@@ -422,4 +420,25 @@ test('agent stays off by default and asks before running commands', async () => 
     delete process.env.ANTHROPIC_API_KEY
     server.close()
   }
+})
+
+test("keeps the user's PROMPT_COMMAND hooks running in bash", async () => {
+  test.skip(isWindows, 'mesma integração; o perfil abaixo usa o bash do PATH')
+  const home = mkdtempSync(join(tmpdir(), 'wrapped-e2e-'))
+  mkdirSync(join(home, 'profiles'), { recursive: true })
+  writeFileSync(join(home, 'profiles', 'hook.toml'), `
+name = "Com hook"
+command = "bash"
+kind = "bash"
+
+[env]
+PROMPT_COMMAND = "__hook_count=$(( \${__hook_count:-0} + 1 )); PS1='custom> '"
+`)
+  wrapped = await launch({ settings: '[terminal]\ndefaultProfile = "user-hook"\nrestoreSession = false\n', home })
+  const { page } = wrapped
+  await run(page, 'echo primeiro')
+  const block = await run(page, 'echo "hooks-$__hook_count"')
+  await expect(block.locator('.block-output')).toHaveText(/^hooks-[2-9]/)
+  // A hook that rewrites PS1 must not take the markers away: the third block still ends.
+  await run(page, 'echo terceiro')
 })

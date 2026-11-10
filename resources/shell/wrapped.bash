@@ -50,6 +50,14 @@ __wrapped_precmd() {
   local code=$?
   if [ -n "${__wrapped_ran:-}" ]; then printf '\033]133;D;%s\007' "$code"; fi
   __wrapped_ran=
+  # The user's own prompt hooks (mise, direnv, starship) run with the command's status, then
+  # whatever PS1 they set is kept for the "shell" prompt mode and replaced by the markers.
+  if [ -n "${__wrapped_user_prompt_command:-}" ]; then
+    (exit "$code")
+    eval "$__wrapped_user_prompt_command"
+  fi
+  if [ "$PS1" != "$__wrapped_ps1" ]; then __wrapped_user_ps1=$PS1; fi
+  PS1=$__wrapped_ps1
   local json
   json=$(printf '{"cwd":"%s","git":"%s","shell":"bash","venv":"%s","user":"%s","host":"%s"}' \
     "$(__wrapped_json_escape "$(__wrapped_cwd)")" \
@@ -86,7 +94,11 @@ __wrapped_send_aliases() {
 }
 
 __wrapped_user_ps1=$PS1
-PS1=$'\[\033]133;A\007\033]133;B\007\] '
+__wrapped_ps1=$'\[\033]133;A\007\033]133;B\007\] '
+PS1=$__wrapped_ps1
+# Bash 5.1 accepts an array here; its elements run in order.
+__wrapped_user_prompt_command=$(IFS=';'; printf '%s' "${PROMPT_COMMAND[*]:-}")
+unset PROMPT_COMMAND
 PS2=''
 # PS0 expands in this shell right after a line is accepted, so the := assignment marks a real run.
 # Its visible output lands before the clear and is discarded along with the echo.

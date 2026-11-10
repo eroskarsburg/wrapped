@@ -106,7 +106,7 @@ interface AppState {
   focusPane(id: string): void
   focusAdjacent(delta: number): void
   resizeSplit(tabId: string, splitId: string, sizes: number[]): void
-  openFile(path: string): void
+  openFile(path: string, line?: number): void
   openTabConfig(config: TabConfig, values: Record<string, string>): void
   openOverlay(overlay: Overlay): void
   setSidebar(view: SidebarView | null): void
@@ -233,6 +233,7 @@ function tabFromConfig(config: TabConfig, values: Record<string, string>, profil
 }
 
 let homeDir = ''
+export const getHomeDir = () => homeDir
 
 export const useApp = create<AppState>((set, get) => ({
   settings: structuredClone(defaultSettings),
@@ -419,9 +420,9 @@ export const useApp = create<AppState>((set, get) => ({
     if (tab) get().updateTab(tabId, { root: update(tab.root) })
   },
 
-  openFile(path) {
-    const kind: PaneKind = /\.(?:md|markdown)$/i.test(path) ? 'markdown' : 'editor'
-    get().splitPane('row', kind, { file: path })
+  openFile(path, line) {
+    const kind: PaneKind = /\.(?:md|markdown)$/i.test(path) && !line ? 'markdown' : 'editor'
+    get().splitPane('row', kind, { file: path, line })
   },
 
   openTabConfig(config, values) {

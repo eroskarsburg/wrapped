@@ -1,17 +1,16 @@
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { filterLines, formatDuration, redact, secretRanges, type FilterOptions } from '../../shared/logic'
+import { filterLines, findLinks, formatDuration, redact, resolveOutputPath, secretRanges, type FilterOptions } from '../../shared/logic'
 import type { StyledLine, StyledSpan } from '../../shared/types'
 import { api } from '../rpc'
-import { useApp } from '../state/store'
+import { getHomeDir, useApp } from '../state/store'
 import { lineText } from '../terminal/extract'
 import type { Block, PaneSession } from '../terminal/PaneSession'
 import { Icon } from './icons'
 
 const CHUNK = 200
-const LINK = /https?:\/\/[^\s"'<>)\]]+|[A-Za-z]:[\\/][^\s"'<>|:*?]+/g
 
 type Mark = 'secret' | 'match' | 'current' | 'link'
-interface Range { from: number; to: number; mark: Mark }
+interface Range { from: number; to: number; mark: Mark; target?: string }
 
 function spanStyle(span: StyledSpan): CSSProperties | undefined {
   if (!span.fg && !span.bg && !span.b && !span.i && !span.u && !span.d && !span.s) return undefined
@@ -44,8 +43,7 @@ function renderLine(line: StyledLine, ranges: Range[]): ReactNode {
       if (range?.mark === 'secret') {
         nodes.push(<span key={key} className="secret" style={spanStyle(span)}>{'•'.repeat(text.length)}</span>)
       } else if (range?.mark === 'link') {
-        const target = lineText(line).slice(range.from, range.to)
-        nodes.push(<a key={key} className="link" data-target={target} title="Ctrl+clique para abrir" style={spanStyle(span)}>{text}</a>)
+        nodes.push(<a key={key} className="link" data-target={range.target} title="Ctrl+clique para abrir" style={spanStyle(span)}>{text}</a>)
       } else if (range) {
         nodes.push(<mark key={key} className={range.mark === 'current' ? 'current' : ''} style={spanStyle(span)}>{text}</mark>)
       } else {
@@ -77,9 +75,10 @@ const OutputLine = memo(function OutputLine({ line, find, currentMatch, secrets 
       index++
     }
   }
-  for (const match of text.matchAll(LINK)) {
-    if (!ranges.some((r) => match.index < r.to && match.index + match[0].length > r.from)) {
-      ranges.push({ from: match.index, to: match.index + match[0].length, mark: 'link' })
+  for (const link of findLinks(text)) {
+    if (!ranges.some((r) => link.from < r.to && link.to > r.from)) {
+      const target = link.url ? link.target : `${link.target}${link.line ? `:${link.line}` : ''}`
+      ranges.push({ from: link.from, to: link.to, mark: 'link', target })
     }
   }
   return <div className="line">{text ? renderLine(line, ranges) : '​'}</div>
@@ -224,8 +223,12 @@ export const BlockView = memo(function BlockView({ block, session, find, current
             // Ctrl is required so that selecting text over a link never opens it.
             const target = (event.target as HTMLElement).closest<HTMLElement>('a.link')?.dataset.target
             if (!target || !event.ctrlKey) return
-            if (/^https?:/i.test(target)) void api.openExternal(target)
-            else useApp.getState().openFile(target)
+            if (/^https?:/i.test(target)) {
+              void api.openExternal(target)
+              return
+            }
+            const [, path, line] = /^(.*?)(?::(\d+))?$/.exec(target)!
+            useApp.getState().openFile(resolveOutputPath(path, block.cwd, getHomeDir()), line ? Number(line) : undefined)
           }}
         >
           {block.running ? <div ref={liveSlot} className="live-slot" /> : chunks.map((chunk, i) => (

@@ -2,7 +2,7 @@
 
 ## Ambiente
 
-Requer Windows 10 1809 ou superior, Node.js LTS e Git.
+Requer Windows 10 1809 ou superior ou Linux, Node.js LTS e Git. No Linux também Python 3, make e um compilador C++.
 
 ```powershell
 git clone https://github.com/eroskarsburg/wrapped.git
@@ -12,7 +12,7 @@ node node_modules/electron/install.js
 npm run dev
 ```
 
-O npm 11 bloqueia scripts de instalação, por isso o binário do Electron é baixado no segundo comando. O `node-pty` usa os prebuilds do pacote e não precisa de compilador C++.
+O npm 11 bloqueia scripts de instalação, por isso o binário do Electron é baixado no segundo comando. No Windows, o `node-pty` usa os prebuilds do pacote e não precisa de compilador C++; no Linux, rode `npm run rebuild:pty` antes do `npm run dev`.
 
 ## Fluxo de trabalho
 
@@ -28,7 +28,7 @@ npm test           # testes unitários (Vitest)
 npm run test:e2e   # end-to-end com PowerShell e Git Bash reais (Playwright), rode npm run build antes
 ```
 
-Mudanças no protocolo de blocos (`resources/shell/`, `src/shared/oscRouter.ts`) devem ser testadas nos dois shells: o ConPTY reordena e repinta a saída de formas que testes unitários não mostram.
+Mudanças no protocolo de blocos (`resources/shell/`, `src/shared/oscRouter.ts`) devem ser testadas no PowerShell e no bash: o ConPTY reordena e repinta a saída de formas que testes unitários não mostram.
 
 ## Checklist de Pull Request
 

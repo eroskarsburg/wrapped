@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import { validateTabConfig } from '../shared/logic'
+import { parseShellHistory, validateTabConfig } from '../shared/logic'
 import { defaultSettings, mergeSettings, type Settings } from '../shared/settings'
 import { builtinThemes, parseThemeFile, themeToFile } from '../shared/themes'
 import type {
@@ -239,16 +239,19 @@ export async function appendHistory(entry: HistoryEntry): Promise<void> {
 /** Oldest first. Includes the shells' own history, so that a new install is useful right away. */
 export async function loadHistory(): Promise<HistoryEntry[]> {
   const entries: HistoryEntry[] = []
-  const imports = [
-    join(process.env.APPDATA ?? '', 'Microsoft', 'Windows', 'PowerShell', 'PSReadLine', 'ConsoleHost_history.txt'),
-    join(homedir(), '.bash_history'),
+  const zdot = process.env.ZDOTDIR || homedir()
+  const imports: [string, 'plain' | 'zsh' | 'fish'][] = [
+    [join(process.env.APPDATA ?? '', 'Microsoft', 'Windows', 'PowerShell', 'PSReadLine', 'ConsoleHost_history.txt'), 'plain'],
+    [join(homedir(), '.local', 'share', 'powershell', 'PSReadLine', 'ConsoleHost_history.txt'), 'plain'],
+    [join(homedir(), '.bash_history'), 'plain'],
+    [join(zdot, '.zsh_history'), 'zsh'],
+    [join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'fish', 'fish_history'), 'fish'],
   ]
   if (!process.env.WRAPPED_HOME) {
-    for (const file of imports) {
-      const text = await fs.readFile(file, 'utf8').catch(() => '')
-      for (const line of text.split(/\r?\n/).slice(-MAX_HISTORY)) {
-        if (line.trim() && !line.endsWith('`')) entries.push({ command: line })
-      }
+    for (const [file, format] of imports) {
+      // zsh may write bytes that are not UTF-8; latin1 keeps them from throwing.
+      const text = await fs.readFile(file, format === 'zsh' ? 'latin1' : 'utf8').catch(() => '')
+      for (const command of parseShellHistory(text, format).slice(-MAX_HISTORY)) entries.push({ command })
     }
   }
   const own = await fs.readFile(historyFile(), 'utf8').catch(() => '')

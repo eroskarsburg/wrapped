@@ -389,3 +389,92 @@ export function looksLikeNaturalLanguage(text: string, isKnownCommand: (word: st
   if (isKnownCommand(words[0])) return false
   return text.endsWith('?') || words.every((w) => /^[\p{L}'’,.?!]+$/u.test(w))
 }
+
+// --- Links in output ------------------------------------------------------------------------
+
+export interface OutputLink {
+  from: number
+  to: number
+  /** A URL, or a path as written, without the line suffix. */
+  target: string
+  url: boolean
+  line?: number
+  column?: number
+}
+
+// Paths: Windows drive paths, absolute or home-relative Unix paths, and relative paths that have a
+// separator and end in a file extension, so that prose like "and/or" is not taken for one.
+const LINK_PATTERN = new RegExp(
+  [
+    String.raw`https?:\/\/[^\s"'<>)\]]+`,
+    String.raw`[A-Za-z]:[\\/][^\s"'<>|:*?]+`,
+    String.raw`(?<![\w.~/-])~?\/(?:[\w.@+-]+\/)*[\w.@+-]+\/?`,
+    String.raw`(?<![\w.~/-])(?:\.{1,2}[\\/])?(?:[\w.@+-]+[\\/])+[\w@+-]+\.[A-Za-z0-9]{1,8}`,
+  ].map((source) => `(?:${source})`).join('|') + String.raw`(?::(\d+)(?::(\d+))?)?`,
+  'g',
+)
+
+export function findLinks(text: string): OutputLink[] {
+  const links: OutputLink[] = []
+  for (const match of text.matchAll(LINK_PATTERN)) {
+    const whole = match[0]
+    const url = /^https?:/i.test(whole)
+    // A trailing period or comma usually ends the sentence rather than the path.
+    let end = whole.length
+    while (end > 0 && /[.,;:]/.test(whole[end - 1])) end--
+    let target = whole.slice(0, end)
+    let line: number | undefined
+    let column: number | undefined
+    if (!url && match[1]) {
+      line = Number(match[1])
+      column = match[2] ? Number(match[2]) : undefined
+      target = target.slice(0, target.length - `:${match[1]}${match[2] ? `:${match[2]}` : ''}`.length)
+    }
+    // A bare "/" or "~/" is never meant as a link.
+    if (!url && target.replace(/^~/, '').replace(/[\\/]/g, '').length === 0) continue
+    links.push({ from: match.index, to: match.index + end, target, url, line, column })
+  }
+  return links
+}
+
+/** Absolute form of a path printed by a command that ran in cwd. */
+export function resolveOutputPath(target: string, cwd: string | undefined, home: string): string {
+  if (target.startsWith('~')) return home + target.slice(1)
+  if (/^(?:[A-Za-z]:)?[\\/]/.test(target) || !cwd) return target
+  const sep = cwd.includes('\\') && !cwd.includes('/') ? '\\' : '/'
+  const parts = cwd.replace(/[\\/]+$/, '').split(/[\\/]/)
+  for (const part of target.split(/[\\/]/)) {
+    if (part === '..') parts.pop()
+    else if (part && part !== '.') parts.push(part)
+  }
+  return parts.join(sep) || sep
+}
+
+// --- Shell history import -------------------------------------------------------------------
+
+/** Commands from a shell's own history file, oldest first. */
+export function parseShellHistory(text: string, format: 'plain' | 'zsh' | 'fish'): string[] {
+  const commands: string[] = []
+  if (format === 'fish') {
+    // Entries look like "- cmd: git status", with backslash escapes for newlines.
+    for (const line of text.split(/\r?\n/)) {
+      const match = /^- cmd: (.*)$/.exec(line)
+      if (match) commands.push(match[1].replace(/\\(.)/g, (_, ch: string) => (ch === 'n' ? '\n' : ch)))
+    }
+    return commands.filter((c) => c.trim())
+  }
+  const lines = text.split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i]
+    if (format === 'zsh') {
+      // Extended history prefixes each entry with ": <start>:<elapsed>;".
+      line = line.replace(/^: \d+:\d+;/, '')
+      while (line.endsWith('\\') && i + 1 < lines.length) line = `${line.slice(0, -1)}\n${lines[++i]}`
+    } else if (line.endsWith('`') || /^#\d+$/.test(line)) {
+      // PowerShell continuation lines and bash timestamps.
+      continue
+    }
+    if (line.trim()) commands.push(line)
+  }
+  return commands
+}

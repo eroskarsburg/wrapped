@@ -4,7 +4,7 @@ export const defaultSettings = {
     syncOsTheme: false,
     lightTheme: 'solarized-light',
     darkTheme: 'wrapped-dark',
-    fontFamily: "'Cascadia Code', Consolas, monospace",
+    fontFamily: "'Cascadia Code', 'JetBrainsMono Nerd Font', 'JetBrains Mono', Consolas, monospace",
     fontSize: 13,
     fontWeight: 'normal' as 'normal' | 'bold' | '300' | '500',
     lineHeight: 1.35,

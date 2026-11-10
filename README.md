@@ -1,6 +1,6 @@
 # Wrapped
 
-Terminal moderno para Windows com blocos de comando, input editor próprio e terminais totalmente personalizáveis.
+Terminal moderno para Windows e Linux com blocos de comando, input editor próprio e terminais totalmente personalizáveis.
 
 ![CI](https://github.com/eroskarsburg/wrapped/actions/workflows/ci.yml/badge.svg)
 ![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue.svg)
@@ -19,7 +19,7 @@ Inspirado no fluxo de trabalho do [Warp](https://www.warp.dev), mas local: sem c
 - Filtro por bloco (texto, regex, maiúsculas, linhas de contexto) e busca em todos os blocos
 - Cabeçalho fixo em saídas longas, navegação por teclado e seleção múltipla
 - Saída em background em bloco próprio; programas de tela cheia (`vim`, `less`) ocupam o pane inteiro
-- Links e caminhos clicáveis, seleção inteligente e ocultação automática de secrets
+- Links e caminhos clicáveis (inclusive `arquivo.ts:42:7`, aberto na linha), seleção inteligente e ocultação automática de secrets
 
 **Input editor**
 - Edição multilinha, realce de sintaxe e sublinhado de comandos inválidos
@@ -29,7 +29,7 @@ Inspirado no fluxo de trabalho do [Warp](https://www.warp.dev), mas local: sem c
 
 **Terminais personalizados**
 - Perfis com shell, argumentos, diretório, variáveis, ícone, cor, tema e comandos de início
-- Detecção de PowerShell, Prompt de Comando, Git Bash e distros WSL
+- Detecção de PowerShell, Prompt de Comando, Git Bash e distros WSL no Windows; do shell de login, bash, zsh, fish e pwsh no Linux
 - Layouts em TOML com panes, comandos e parâmetros
 - Temas em YAML, gradiente, imagem de fundo e criação de tema a partir de uma imagem
 - Abas verticais ou horizontais, cor por diretório, split panes e sincronização de input
@@ -53,16 +53,19 @@ Sync na nuvem, equipes, compartilhamento de sessão e agentes em nuvem ficam de 
 | Windows PowerShell 5.1 | sim | testado |
 | Git Bash | sim | testado |
 | Bash no WSL | sim | testado |
+| Bash no Linux | sim | testado |
 | PowerShell 7 | sim | usa o mesmo script, não testado |
 | zsh e fish | sim | integração escrita, não testada |
 | Prompt de Comando | não | modo clássico |
+
+A integração preserva o `PROMPT_COMMAND` (bash) e os hooks `precmd` (zsh) que você já usa, como os do mise, direnv e starship. O histórico do bash, zsh, fish e PowerShell é importado na primeira execução.
 
 Conexões `ssh` rodam dentro de um bloco comum, sem blocos para os comandos remotos.
 
 ## Pré-requisitos
 
-- Windows 10 1809 ou superior
-- Para desenvolver: Node.js LTS e Git
+- Windows 10 1809 ou superior, ou Linux com X11 ou Wayland
+- Para desenvolver: Node.js LTS e Git; no Linux também Python 3, make e um compilador C++ (para o `node-pty`)
 
 ## Instalação e execução
 
@@ -81,6 +84,15 @@ npm run dev
 ```
 
 O instalador não é assinado, então o Windows SmartScreen pode exibir um aviso.
+
+No Linux, o `node-pty` não tem binários pré-compilados e precisa ser compilado para o Electron uma vez:
+
+```bash
+npm ci
+node node_modules/electron/install.js
+npm run rebuild:pty
+npm run dev          # ou npm run dist:linux para gerar AppImage, .deb e pacote do pacman
+```
 
 ## Configuração
 
@@ -146,6 +158,8 @@ npm test           # unitários
 npm run build
 npm run test:e2e   # end-to-end com shells reais
 ```
+
+No Linux, `WRAPPED_E2E_HIDDEN=1 npm run test:e2e` roda os testes com as janelas ocultas, sem tomar a tela de quem está usando o desktop.
 
 ## Estrutura do projeto
 
