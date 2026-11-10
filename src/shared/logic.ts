@@ -1,4 +1,4 @@
-import type { TabConfig, TabConfigPane, Workflow } from './types'
+import type { FontInfo, TabConfig, TabConfigPane, Workflow } from './types'
 
 // --- Fuzzy matching -------------------------------------------------------------------------
 
@@ -611,4 +611,31 @@ export function parseGitStats(numstat: string, porcelain: string): GitDiffStats 
   }
   stats.files += porcelain.split('\n').filter((line) => line.startsWith('??')).length
   return stats
+}
+
+/** Families from `fc-list --format '%{family[0]}\t%{spacing:-0}\n'`: monospaced if any of its faces is (spacing 100). */
+export function parseFcList(output: string): FontInfo[] {
+  const fonts = new Map<string, boolean>()
+  for (const line of output.split('\n')) {
+    const [family, spacing] = line.split('\t')
+    const name = family?.trim()
+    if (!name || name.startsWith('.')) continue
+    fonts.set(name, (fonts.get(name) ?? false) || Number(spacing) >= 100)
+  }
+  return [...fonts].map(([family, mono]) => ({ family, mono })).sort((a, b) => a.family.localeCompare(b.family))
+}
+
+/** Fallbacks kept after the chosen family, so that prompt icons still find a Nerd Font glyph. */
+const FONT_FALLBACK = ["'JetBrainsMono Nerd Font'", 'monospace']
+
+/** The CSS font stack that puts `family` first. */
+export function fontStack(family: string): string {
+  const quoted = `'${family.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
+  return [quoted, ...FONT_FALLBACK.filter((item) => item.toLowerCase() !== quoted.toLowerCase())].join(', ')
+}
+
+/** The first family of a CSS font stack, unquoted. */
+export function primaryFamily(stack: string): string {
+  const first = /^\s*(?:'((?:\\.|[^'])*)'|"((?:\\.|[^"])*)"|([^,]*))/.exec(stack)
+  return (first?.[1] ?? first?.[2] ?? first?.[3] ?? '').replace(/\\(.)/g, '$1').trim()
 }

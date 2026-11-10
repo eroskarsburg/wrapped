@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -96,6 +96,19 @@ test('suggests from history and accepts with the right arrow', async () => {
   await expect(page.locator('.ghost')).toHaveText('sugestao-unica')
   await page.keyboard.press('ArrowRight')
   await expect(input(page)).toHaveText('echo autosugestao-unica')
+})
+
+test('accepts the history suggestion with Tab', async () => {
+  wrapped = await launch({ settings: BASE })
+  const { page } = wrapped
+  await run(page, 'echo sugestao-com-tab')
+  await waitReady(page)
+  await input(page).click()
+  await page.keyboard.type('echo suges')
+  await expect(page.locator('.ghost')).toHaveText('tao-com-tab')
+  await page.keyboard.press('Tab')
+  await expect(input(page)).toHaveText('echo sugestao-com-tab')
+  await expect(page.locator('.completions')).toHaveCount(0)
 })
 
 test('walks history with the arrows and searches it with Ctrl+R', async () => {
@@ -241,6 +254,61 @@ test('creates a profile in the settings screen', async () => {
   await page.getByRole('button', { name: 'Salvar perfil' }).click()
   await expect(page.locator('.profile-row', { hasText: 'Criado na tela' })).toBeVisible()
   expect(readFileSync(join(home, 'profiles', 'criado_na_tela.toml'), 'utf8')).toContain('Criado na tela')
+})
+
+test('chooses font, size and weight with live preview', async () => {
+  wrapped = await launch({ settings: BASE })
+  const { page, home } = wrapped
+  await waitReady(page)
+  await page.keyboard.press('Control+,')
+  const picker = page.getByTestId('font-picker')
+  await picker.getByRole('checkbox', { name: 'Só monoespaçadas' }).uncheck()
+  const first = picker.locator('.font-option:not(.on)').first()
+  await expect(first).toBeVisible({ timeout: 15_000 })
+  const family = (await first.getAttribute('data-family'))!
+  const option = picker.locator(`.font-option[data-family="${family}"]`)
+  await option.hover()
+  await expect(picker.getByTestId('font-preview')).toContainText(`Prévia: ${family}`)
+  await option.click()
+  await expect(option).toHaveAttribute('aria-selected', 'true')
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--font-mono'))).toContain(family)
+  await picker.getByRole('spinbutton', { name: 'Tamanho da fonte' }).fill('18')
+  await picker.getByRole('radio', { name: /Bold/ }).first().click()
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--font-size'))).toBe('18px')
+  await expect.poll(() => readFileSync(join(home, 'settings.toml'), 'utf8')).toContain('fontWeight = "bold"')
+  const saved = readFileSync(join(home, 'settings.toml'), 'utf8')
+  expect(saved).toContain('fontSize = 18')
+  expect(saved).toContain('fontWeight = "bold"')
+  expect(saved).toContain(family)
+})
+
+test('downloads a popular web font and uses it in the terminal', async () => {
+  wrapped = await launch({ settings: BASE })
+  const { page, home } = wrapped
+  await waitReady(page)
+  await page.keyboard.press('Control+,')
+  const picker = page.getByTestId('font-picker')
+  await picker.getByRole('textbox', { name: 'Buscar fonte' }).fill('Space Mono')
+  const option = picker.locator('.font-option[data-family="Space Mono"]')
+  await expect(option).toContainText('da web', { timeout: 20_000 })
+  await option.click()
+  await expect(option).toHaveAttribute('aria-selected', 'true', { timeout: 20_000 })
+  await expect.poll(() => page.evaluate(() => document.fonts.check('15px "Space Mono"') && getComputedStyle(document.documentElement).getPropertyValue('--font-mono'))).toContain('Space Mono')
+  expect(existsSync(join(home, 'fonts', 'space-mono', '400.woff2'))).toBe(true)
+  await expect.poll(() => readFileSync(join(home, 'settings.toml'), 'utf8')).toContain('Space Mono')
+})
+
+test('draws live programs with the configured font', async () => {
+  wrapped = await launch({ settings: BASE })
+  const { page } = wrapped
+  await waitReady(page)
+  // The xterm WebGL renderer sets fonts with a leading space, which Chromium would reject.
+  const font = await page.evaluate(() => {
+    const context = document.createElement('canvas').getContext('2d')!
+    context.font = ' normal 20px monospace'
+    return context.font
+  })
+  expect(font).toBe('20px monospace')
 })
 
 test('changes the theme and persists settings', async () => {
@@ -505,7 +573,7 @@ test('suggests the command that usually comes next', async () => {
   await waitReady(page)
   await expect(page.locator('.ghost')).toHaveText('echo passo-dois')
   await input(page).click()
-  await page.keyboard.press('ArrowRight')
+  await page.keyboard.press('Tab')
   await expect(input(page)).toHaveText('echo passo-dois')
 })
 

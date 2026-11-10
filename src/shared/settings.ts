@@ -1,12 +1,15 @@
+export const FONT_WEIGHTS = ['100', '200', '300', 'normal', '500', '600', 'bold', '800', '900'] as const
+export type FontWeight = (typeof FONT_WEIGHTS)[number]
+
 export const defaultSettings = {
   appearance: {
     theme: 'wrapped-dark',
     syncOsTheme: false,
     lightTheme: 'solarized-light',
     darkTheme: 'wrapped-dark',
-    fontFamily: "'Cascadia Code', 'JetBrainsMono Nerd Font', 'JetBrains Mono', Consolas, monospace",
-    fontSize: 13,
-    fontWeight: 'normal' as 'normal' | 'bold' | '300' | '500',
+    fontFamily: "'JetBrainsMono Nerd Font', 'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
+    fontSize: 15,
+    fontWeight: 'normal' as FontWeight,
     lineHeight: 1.35,
     ligatures: false,
     minimumContrast: 1,
@@ -77,7 +80,7 @@ export interface SettingField {
   path: string
   label: string
   section: string
-  type: 'boolean' | 'number' | 'text' | 'select' | 'list' | 'theme' | 'profile'
+  type: 'boolean' | 'number' | 'text' | 'select' | 'list' | 'theme' | 'profile' | 'font'
   options?: string[]
   min?: number
   max?: number
@@ -88,9 +91,9 @@ export const settingFields: SettingField[] = [
   { path: 'appearance.syncOsTheme', label: 'Seguir claro/escuro do sistema', section: 'Aparência', type: 'boolean' },
   { path: 'appearance.lightTheme', label: 'Tema no modo claro', section: 'Aparência', type: 'theme' },
   { path: 'appearance.darkTheme', label: 'Tema no modo escuro', section: 'Aparência', type: 'theme' },
-  { path: 'appearance.fontFamily', label: 'Fonte', section: 'Aparência', type: 'text' },
+  { path: 'appearance.fontFamily', label: 'Fonte', section: 'Aparência', type: 'font' },
   { path: 'appearance.fontSize', label: 'Tamanho da fonte', section: 'Aparência', type: 'number', min: 8, max: 32 },
-  { path: 'appearance.fontWeight', label: 'Peso da fonte', section: 'Aparência', type: 'select', options: ['300', 'normal', '500', 'bold'] },
+  { path: 'appearance.fontWeight', label: 'Peso da fonte', section: 'Aparência', type: 'select', options: [...FONT_WEIGHTS] },
   { path: 'appearance.lineHeight', label: 'Altura da linha', section: 'Aparência', type: 'number', min: 1, max: 2 },
   { path: 'appearance.ligatures', label: 'Ligaduras', section: 'Aparência', type: 'boolean' },
   { path: 'appearance.minimumContrast', label: 'Contraste mínimo (1 a 21)', section: 'Aparência', type: 'number', min: 1, max: 21 },

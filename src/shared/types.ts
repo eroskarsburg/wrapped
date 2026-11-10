@@ -253,3 +253,9 @@ export type AgentEvent =
   | { type: 'approval'; id: string; name: string; input: unknown }
   | { type: 'done'; stopReason?: string }
   | { type: 'error'; message: string }
+
+/** A font family installed on the system; `mono` is unknown when the platform does not say. */
+export interface FontInfo {
+  family: string
+  mono?: boolean
+}

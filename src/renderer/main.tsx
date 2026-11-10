@@ -11,6 +11,7 @@ import { HorizontalTabs, Rail, Sidebar } from './features/Sidebar'
 import { api, onEvent } from './rpc'
 import { sessions, useApp } from './state/store'
 import './styles.css'
+import { ensureConfiguredFont } from './webFonts'
 
 function applyTheme(theme: Theme, opacity: number): void {
   const root = document.documentElement.style
@@ -41,6 +42,10 @@ function useAppearance(): void {
     void api.setZoom(settings.appearance.zoom)
     for (const session of sessions.values()) session.applyAppearance(themeForPane(session.profile))
     let cancelled = false
+    // A downloaded font arrives after the terminals measured their cells with the fallback.
+    void ensureConfiguredFont(settings.appearance.fontFamily, settings.appearance.fontWeight).then((loaded) => {
+      if (loaded && !cancelled) for (const session of sessions.values()) session.refreshFont(themeForPane(session.profile))
+    }).catch(() => undefined)
     if (theme.backgroundImage) {
       void api.readImage(theme.backgroundImage).then((url) => {
         if (cancelled || !url) return

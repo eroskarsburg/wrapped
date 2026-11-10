@@ -5,6 +5,7 @@ import type { Profile, ShellKind } from '../../shared/types'
 import { actions, bindingFor, eventKeys } from '../actions'
 import { api } from '../rpc'
 import { useApp } from '../state/store'
+import { FontPicker } from './FontPicker'
 import { Icon } from './icons'
 
 function Field({ field }: { field: SettingField }) {
@@ -246,6 +247,9 @@ function AgentSection() {
   )
 }
 
+/** Shown by the font picker in Aparência; still listed as plain fields when searching. */
+const FONT_FIELDS = new Set(['appearance.fontFamily', 'appearance.fontSize', 'appearance.fontWeight'])
+
 const SECTIONS = ['Aparência', 'Janela', 'Terminal', 'Input', 'Perfis', 'Atalhos', 'Privacidade', 'Hotkey', 'Agente']
 
 export function SettingsOverlay({ onClose }: { onClose(): void }) {
@@ -253,7 +257,7 @@ export function SettingsOverlay({ onClose }: { onClose(): void }) {
   const [query, setQuery] = useState('')
   const fields = useMemo(() => {
     const needle = query.toLowerCase()
-    return settingFields.filter((field) => (needle ? field.label.toLowerCase().includes(needle) : field.section === section))
+    return settingFields.filter((field) => (needle ? field.label.toLowerCase().includes(needle) : field.section === section && !FONT_FIELDS.has(field.path)))
   }, [query, section])
   return (
     <div className="overlay" onMouseDown={onClose} onKeyDown={(event) => event.key === 'Escape' && onClose()}>
@@ -270,6 +274,7 @@ export function SettingsOverlay({ onClose }: { onClose(): void }) {
           <header><h2>{query ? 'Resultados' : section}</h2><button onClick={onClose} title="Fechar"><Icon name="close" /></button></header>
           {!query && section === 'Perfis' && <ProfilesSection />}
           {section === 'Atalhos' && <KeybindingsSection query={query} />}
+          {!query && section === 'Aparência' && <FontPicker />}
           {fields.map((field) => (
             <div className="setting-row" key={field.path}>
               <span>{field.label}</span>

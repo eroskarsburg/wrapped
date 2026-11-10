@@ -6,6 +6,7 @@ import type { EnvCollection, HistoryEntry, KnowledgeKind, Profile, TabConfig, Th
 import { agentConversation, generateCommand, resetConversation } from './agent'
 import { gitDiff, gitStats, gitStatus, listDir, readText, searchFiles, writeText } from './code'
 import { completions, describeToken } from './completions'
+import { downloadedWebFonts, listFonts, webFont } from './fonts'
 import { applySettings } from './window'
 import { configDir } from './paths'
 import { createSession, getSession } from './pty'
@@ -42,6 +43,9 @@ export const handlers = {
   saveProfile: (_: WebContents, profile: Profile) => store.saveProfile(profile),
   deleteProfile: (_: WebContents, id: string) => store.deleteProfile(id),
   listThemes: () => store.listThemes(),
+  listFonts: () => listFonts(),
+  webFont: (_: WebContents, id: string, weight: number) => webFont(id, weight),
+  downloadedWebFonts: () => downloadedWebFonts(),
   saveTheme: (_: WebContents, theme: Theme) => store.saveTheme(theme),
   listTabConfigs: () => store.listTabConfigs(),
   saveTabConfig: (_: WebContents, config: TabConfig) => store.saveTabConfig(config),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  closestCommand, commandNeedsApproval, commandSegments, commandWords, compileSecretPatterns, encodeCommand, filterLines, formatDuration, fuzzyFilter,
+  closestCommand, commandNeedsApproval, fontStack, parseFcList, primaryFamily, commandSegments, commandWords, compileSecretPatterns, encodeCommand, filterLines, formatDuration, fuzzyFilter,
   isCliAgentCommand, isClearCommand, looksLikeNaturalLanguage, mergeRanges, redact, renderTemplate, secretRanges,
   templateParams, tokenize, toWslPath, validateTabConfig, workflowParams,
 } from '../../src/shared/logic'
@@ -194,5 +194,24 @@ describe('themes', () => {
   })
   it('mixes colors', () => {
     expect(mix('#000000', '#ffffff', 0.5)).toBe('#808080')
+  })
+})
+
+describe('fontes', () => {
+  it('agrupa as faces do fc-list e marca a família como mono se alguma face for', () => {
+    const output = 'iA Writer Mono S\t0\nJetBrainsMono Nerd Font\t100\niA Writer Mono S\t100\nAdwaita Sans\t0\n.Hidden\t100\n\n'
+    expect(parseFcList(output)).toEqual([
+      { family: 'Adwaita Sans', mono: false },
+      { family: 'iA Writer Mono S', mono: true },
+      { family: 'JetBrainsMono Nerd Font', mono: true },
+    ])
+  })
+  it('monta a pilha CSS e extrai a primeira família de volta', () => {
+    expect(fontStack('Fira Code')).toBe("'Fira Code', 'JetBrainsMono Nerd Font', monospace")
+    expect(fontStack('JetBrainsMono Nerd Font')).toBe("'JetBrainsMono Nerd Font', monospace")
+    expect(primaryFamily(fontStack("O'Font"))).toBe("O'Font")
+    expect(primaryFamily("'Cascadia Code', Consolas, monospace")).toBe('Cascadia Code')
+    expect(primaryFamily('"Iosevka Term", monospace')).toBe('Iosevka Term')
+    expect(primaryFamily('Consolas, monospace')).toBe('Consolas')
   })
 })

@@ -7,6 +7,7 @@ import type { RouterEvent } from '../../shared/oscRouter'
 import type { Settings } from '../../shared/settings'
 import type { PersistedBlock, Profile, SessionMeta, Theme } from '../../shared/types'
 import { api, onEvent } from '../rpc'
+import './canvasFont'
 import { extractLines, lineText } from './extract'
 
 export interface Block extends PersistedBlock {
@@ -43,6 +44,20 @@ export interface SessionHooks {
   onCommandFinished(session: PaneSession, block: Block): void
   onCommandSubmitted(session: PaneSession, command: string): void
   onMetaChange(session: PaneSession): void
+}
+
+/**
+ * xterm multiplies the font's own line height, whereas the rest of the app (CSS) multiplies the font
+ * size; this converts the setting so that live programs get the same row height as the blocks.
+ */
+export function xtermLineHeight(appearance: Settings['appearance']): number {
+  const context = document.createElement('canvas').getContext('2d')
+  if (!context) return appearance.lineHeight
+  context.font = `${appearance.fontSize}px ${appearance.fontFamily}`
+  const metrics = context.measureText('W')
+  const natural = metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent
+  if (!natural) return appearance.lineHeight
+  return Math.max(1, (appearance.fontSize * appearance.lineHeight) / natural)
 }
 
 export class PaneSession {
@@ -88,7 +103,7 @@ export class PaneSession {
       fontFamily: appearance.fontFamily,
       fontSize: appearance.fontSize,
       fontWeight: appearance.fontWeight,
-      lineHeight: appearance.lineHeight,
+      lineHeight: xtermLineHeight(appearance),
       cursorStyle: appearance.cursorStyle,
       cursorBlink: appearance.cursorBlink,
       minimumContrastRatio: appearance.minimumContrast,
@@ -405,11 +420,19 @@ export class PaneSession {
     options.fontFamily = appearance.fontFamily
     options.fontSize = appearance.fontSize
     options.fontWeight = appearance.fontWeight
-    options.lineHeight = appearance.lineHeight
+    options.lineHeight = xtermLineHeight(appearance)
     options.cursorStyle = appearance.cursorStyle
     options.cursorBlink = appearance.cursorBlink
     options.minimumContrastRatio = appearance.minimumContrast
     this.scheduleHeight()
+  }
+
+  /** xterm caches glyph metrics per font name, so a font that finished loading needs a fresh measure. */
+  refreshFont(theme: Theme): void {
+    const options = this.term.options
+    options.fontFamily = 'monospace'
+    this.applyAppearance(theme)
+    this.term.clearTextureAtlas()
   }
 
   /** Mutates visible block state and redraws. */

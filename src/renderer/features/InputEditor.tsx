@@ -261,6 +261,15 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
     return true
   }
 
+  /** Fills in the whole ghost suggestion, if one shows and the cursor sits at the end of the input. */
+  const acceptGhost = (editor: EditorView): boolean => {
+    const ghost = editor.state.field(ghostField)
+    const end = editor.state.doc.length
+    if (!ghost || editor.state.selection.main.head !== end) return false
+    editor.dispatch({ changes: { from: end, insert: ghost }, selection: { anchor: end + ghost.length } })
+    return true
+  }
+
   const expandAlias = (editor: EditorView): boolean => {
     if (!useApp.getState().settings.input.aliasExpansion) return false
     const text = editor.state.doc.toString()
@@ -298,10 +307,10 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
       { key: 'Shift-Enter', run: (editor) => { editor.dispatch(editor.state.replaceSelection('\n')); return true } },
       {
         key: 'Tab',
-        run() {
+        run(editor) {
           const current = popupRef.current
           if (current) accept(current)
-          else void openCompletions(false)
+          else if (!acceptGhost(editor)) void openCompletions(false)
           return true
         },
       },
@@ -340,13 +349,7 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
       },
       {
         key: 'ArrowRight',
-        run(editor) {
-          const ghost = editor.state.field(ghostField)
-          if (!ghost || editor.state.selection.main.head !== editor.state.doc.length) return false
-          const end = editor.state.doc.length
-          editor.dispatch({ changes: { from: end, insert: ghost }, selection: { anchor: end + ghost.length } })
-          return true
-        },
+        run: acceptGhost,
       },
       {
         key: 'Alt-ArrowRight',
