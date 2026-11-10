@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findLinks, parseShellHistory, resolveOutputPath } from '../../src/shared/logic'
+import { commandRequest, findLinks, modelRequestOptions, parseShellHistory, resolveOutputPath } from '../../src/shared/logic'
 
 const targets = (text: string) => findLinks(text).map((link) => link.target)
 
@@ -48,5 +48,36 @@ describe('parseShellHistory', () => {
   })
   it('reads fish history', () => {
     expect(parseShellHistory('- cmd: git log\n  when: 1700000000\n- cmd: echo a\\nb\n  when: 1\n', 'fish')).toEqual(['git log', 'echo a\nb'])
+  })
+})
+
+describe('modelRequestOptions', () => {
+  it('turns on adaptive thinking, effort and fallbacks on current models', () => {
+    expect(modelRequestOptions('claude-opus-5-5', 'high')).toEqual({
+      thinking: { type: 'adaptive', display: 'summarized' },
+      output_config: { effort: 'high' },
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+    })
+  })
+  it('leaves fallbacks out where the API has none', () => {
+    const haiku = modelRequestOptions('claude-haiku-5-5', 'low')
+    expect(haiku.fallbacks).toBeUndefined()
+    expect(haiku.thinking).toEqual({ type: 'adaptive', display: 'summarized' })
+  })
+  it('sends nothing extra to models without adaptive thinking', () => {
+    expect(modelRequestOptions('claude-haiku-4-5', 'high')).toEqual({})
+  })
+})
+
+describe('commandRequest', () => {
+  it('reads a request after the hash', () => {
+    expect(commandRequest('# listar arquivos grandes')).toBe('listar arquivos grandes')
+    expect(commandRequest('#mostrar portas abertas')).toBe('mostrar portas abertas')
+  })
+  it('ignores normal commands and a lone hash', () => {
+    expect(commandRequest('ls -la')).toBeNull()
+    expect(commandRequest('#')).toBeNull()
+    expect(commandRequest('echo # nao')).toBeNull()
   })
 })

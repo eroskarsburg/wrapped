@@ -478,3 +478,32 @@ export function parseShellHistory(text: string, format: 'plain' | 'zsh' | 'fish'
   }
   return commands
 }
+
+// --- Agent request options ------------------------------------------------------------------
+
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
+/** Models whose refusals the API can retry on another model inside the same call. */
+const SERVER_FALLBACK = new Set(['claude-fable-5-2', 'claude-fable-5-1', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5'])
+/** Models from before adaptive thinking, which take neither it nor an effort level. */
+const NO_ADAPTIVE = /^claude-(?:haiku-4-5|sonnet-4-5|opus-4-5|opus-4-1|3)/
+
+/** Thinking, effort and refusal fallback parameters that the given model accepts. */
+export function modelRequestOptions(model: string, effort: Effort): Record<string, unknown> {
+  if (NO_ADAPTIVE.test(model)) return {}
+  const options: Record<string, unknown> = {
+    thinking: { type: 'adaptive', display: 'summarized' },
+    output_config: { effort },
+  }
+  if (SERVER_FALLBACK.has(model)) {
+    options.betas = ['server-side-fallback-2026-07-01']
+    options.fallbacks = 'default'
+  }
+  return options
+}
+
+/** Text after the "#" that asks for a command in plain language, or null for a normal command. */
+export function commandRequest(text: string): string | null {
+  const match = /^#\s*(\S[\s\S]*)$/.exec(text.trim())
+  return match ? match[1].trim() : null
+}

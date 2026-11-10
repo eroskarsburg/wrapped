@@ -4,7 +4,7 @@ import { Compartment, EditorState, Prec, RangeSetBuilder, StateEffect, StateFiel
 import { Decoration, EditorView, hoverTooltip, keymap, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view'
 import { vim } from '@replit/codemirror-vim'
 import { useEffect, useRef, useState } from 'react'
-import { looksLikeNaturalLanguage, tokenize } from '../../shared/logic'
+import { commandRequest, looksLikeNaturalLanguage, tokenize } from '../../shared/logic'
 import type { Completion } from '../../shared/types'
 import { api } from '../rpc'
 import { history, knownCommands, useApp } from '../state/store'
@@ -132,6 +132,10 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
   const popupRef = useRef<Popup | null>(null)
   const [popup, setPopupState] = useState<Popup | null>(null)
   const [agentHint, setAgentHint] = useState(false)
+  const [aiRequest, setAiRequest] = useState(false)
+  /** Message under the input, kept until the text it belongs to changes. */
+  const [notice, setNotice] = useState<{ text: string; tone: 'muted' | 'error' } | null>(null)
+  const noticeFor = useRef<string | null>(null)
   const historyCursor = useRef<number | null>(null)
   const draft = useRef('')
   const requestId = useRef(0)
@@ -186,10 +190,44 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
     setPopup(null)
   }
 
+  const showNotice = (text: string, tone: 'muted' | 'error', forText: string) => {
+    noticeFor.current = forText
+    setNotice({ text, tone })
+  }
+
+  const generate = async (request: string, original: string) => {
+    if (!useApp.getState().settings.agent.enabled) {
+      showNotice('Ative o Agent Mode nas configurações para gerar comandos com #.', 'error', original)
+      return
+    }
+    showNotice('Gerando comando…', 'muted', original)
+    try {
+      const result = await api.generateCommand(request, { cwd: session.cwd, shell: session.kind })
+      if (view.current?.state.doc.toString() !== original) return
+      if (!result.command) {
+        showNotice(result.explanation || 'Nenhum comando sugerido.', 'error', original)
+        return
+      }
+      noticeFor.current = result.command
+      setText(result.command)
+      setNotice({ text: result.explanation, tone: 'muted' })
+    } catch (error) {
+      // Errors thrown in the main process arrive wrapped in Electron's IPC message.
+      const message = String(error instanceof Error ? error.message : error).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '')
+      showNotice(message, 'error', original)
+    }
+  }
+
   const submit = () => {
     const editor = view.current
     if (!editor) return
     const command = editor.state.doc.toString()
+    const request = commandRequest(command)
+    if (request) {
+      setPopup(null)
+      void generate(request, command)
+      return
+    }
     if (!command.trim() || !session.ready) return
     setText('')
     setPopup(null)
@@ -329,6 +367,11 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
       const ghost = input.autosuggestions ? suggestFromHistory(text, session.cwd) : ''
       if (ghost) queueMicrotask(() => view.current?.dispatch({ effects: setGhost.of(ghost) }))
       setAgentHint(agent.enabled && agent.naturalLanguageDetection && looksLikeNaturalLanguage(text, (word) => isKnownCommand(word, session.meta.aliases)))
+      setAiRequest(commandRequest(text) !== null)
+      if (noticeFor.current !== null && noticeFor.current !== text) {
+        noticeFor.current = null
+        setNotice(null)
+      }
       if (popupRef.current || input.completionsWhileTyping) {
         if (text.trim()) void openCompletions(true)
         else setPopup(null)
@@ -401,7 +444,9 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
         </div>
       )}
       <div className="editor-host" ref={parent} />
-      {agentHint && agentEnabled && <div className="agent-hint">Parece linguagem natural. <kbd>Ctrl+Enter</kbd> envia ao agente.</div>}
+      {notice && <div className={notice.tone === 'error' ? 'agent-hint error' : 'agent-hint'} data-testid="input-notice">{notice.text}</div>}
+      {!notice && aiRequest && <div className="agent-hint"><kbd>Enter</kbd> gera um comando a partir da descrição, sem executar.</div>}
+      {!notice && !aiRequest && agentHint && agentEnabled && <div className="agent-hint">Parece linguagem natural. <kbd>Ctrl+Enter</kbd> envia ao agente, ou comece com <kbd>#</kbd> para gerar um comando.</div>}
     </div>
   )
 }

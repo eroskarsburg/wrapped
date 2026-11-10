@@ -129,7 +129,7 @@ export const settingFields: SettingField[] = [
   { path: 'hotkey.quakeHeightPercent', label: 'Altura da janela Quake (%)', section: 'Hotkey', type: 'number', min: 20, max: 100 },
   { path: 'hotkey.quakePosition', label: 'Posição da janela Quake', section: 'Hotkey', type: 'select', options: ['top', 'bottom'] },
   { path: 'agent.enabled', label: 'Ativar Agent Mode', section: 'Agente', type: 'boolean' },
-  { path: 'agent.model', label: 'Modelo', section: 'Agente', type: 'select', options: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-4-5', 'claude-fable-5-1'] },
+  { path: 'agent.model', label: 'Modelo', section: 'Agente', type: 'select', options: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-2'] },
   { path: 'agent.activeProfile', label: 'Perfil de permissões (de ~/.wrapped/agent_profiles)', section: 'Agente', type: 'text' },
   { path: 'agent.naturalLanguageDetection', label: 'Detectar linguagem natural no input', section: 'Agente', type: 'boolean' },
   { path: 'agent.showCliAgentToolbar', label: 'Toolbar para CLI agents (claude, codex…)', section: 'Agente', type: 'boolean' },

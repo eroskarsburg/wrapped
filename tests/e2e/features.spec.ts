@@ -442,3 +442,51 @@ PROMPT_COMMAND = "__hook_count=$(( \${__hook_count:-0} + 1 )); PS1='custom> '"
   // A hook that rewrites PS1 must not take the markers away: the third block still ends.
   await run(page, 'echo terceiro')
 })
+
+test('turns a "#" request into a command without running it', async () => {
+  const bodies: any[] = []
+  const server = createServer((request, response) => {
+    let data = ''
+    request.on('data', (chunk) => (data += chunk))
+    request.on('end', () => {
+      bodies.push(JSON.parse(data))
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({
+        id: 'm', type: 'message', role: 'assistant', model: 'x', stop_reason: 'end_turn', stop_sequence: null,
+        usage: { input_tokens: 1, output_tokens: 1 },
+        content: [{ type: 'text', text: JSON.stringify({ command: 'echo gerado-pela-ia', explanation: 'Imprime um texto.' }) }],
+      }))
+    })
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${(server.address() as { port: number }).port}`
+  process.env.ANTHROPIC_API_KEY = 'chave-de-teste'
+  try {
+    wrapped = await launch({ settings: `[agent]\nenabled = false\n${BASE}` })
+    const { page } = wrapped
+    await waitReady(page)
+    await input(page).click()
+    await page.keyboard.insertText('# imprima um texto')
+    await page.keyboard.press('Enter')
+    await expect(page.getByTestId('input-notice')).toContainText('Ative o Agent Mode')
+    await page.keyboard.press('Control+Shift+A')
+    await page.getByTestId('agent-panel').getByRole('button', { name: 'Ativar' }).click()
+    await page.keyboard.press('Control+Shift+A')
+    await input(page).click()
+    await page.keyboard.press('End')
+    await page.keyboard.press('Enter')
+    await expect(input(page)).toHaveText('echo gerado-pela-ia', { timeout: 15_000 })
+    await expect(page.getByTestId('input-notice')).toHaveText('Imprime um texto.')
+    await expect(page.locator('.block')).toHaveCount(0)
+    const body = bodies.at(-1)
+    expect(body.model).toBe('claude-opus-5-5')
+    expect(body.output_config).toEqual(expect.objectContaining({ effort: 'low', format: expect.objectContaining({ type: 'json_schema' }) }))
+    expect(body.messages[0].content).toContain('imprima um texto')
+    await page.keyboard.press('Enter')
+    await expect(page.locator('.block .block-output')).toHaveText(/^gerado-pela-ia/, { timeout: 15_000 })
+  } finally {
+    delete process.env.ANTHROPIC_BASE_URL
+    delete process.env.ANTHROPIC_API_KEY
+    server.close()
+  }
+})

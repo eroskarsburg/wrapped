@@ -42,6 +42,7 @@ Inspirado no fluxo de trabalho do [Warp](https://www.warp.dev), mas local: sem c
 **Código e agente**
 - Explorador de arquivos, busca global, editor, visualizador de Markdown e revisão de diff
 - Agent Mode opcional com a sua chave da API Anthropic: pede aprovação antes de executar comandos ou gravar arquivos, e aceita rules e servidores MCP
+- `# descrição em linguagem natural` + Enter no input gera o comando para o seu shell, sem executá-lo
 - Toolbar com rich input para CLI agents como `claude`
 
 Sync na nuvem, equipes, compartilhamento de sessão e agentes em nuvem ficam de fora: dependem de um backend que este projeto não tem.

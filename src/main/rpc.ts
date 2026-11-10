@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { promises as fs } from 'node:fs'
 import type { Settings } from '../shared/settings'
 import type { EnvCollection, HistoryEntry, KnowledgeKind, Profile, TabConfig, Theme, WindowSession } from '../shared/types'
-import { agentConversation, resetConversation } from './agent'
+import { agentConversation, generateCommand, resetConversation } from './agent'
 import { gitDiff, gitStatus, listDir, readText, searchFiles, writeText } from './code'
 import { completions, describeToken } from './completions'
 import { applySettings } from './window'
@@ -119,6 +119,7 @@ export const handlers = {
     agentConversation(id, sender).commandResult(requestId, output),
   agentStop: (sender: WebContents, id: string) => agentConversation(id, sender).stop(),
   agentReset: (_: WebContents, id: string) => resetConversation(id),
+  generateCommand: (_: WebContents, request: string, context: { cwd?: string; shell?: string }) => generateCommand(request, context),
   saveApiKey: (_: WebContents, key: string) => store.saveApiKey(key),
   hasApiKey: () => !!(store.loadApiKey() || process.env.ANTHROPIC_API_KEY),
   listAgentProfiles: () => store.listAgentProfiles(),

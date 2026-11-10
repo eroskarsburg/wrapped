@@ -367,6 +367,7 @@ code, pre { font-family: var(--font-mono); }
 .inspector p { margin: 2px 0 0; color: var(--muted); }
 .cm-tooltip { background: var(--surface-2) !important; border: 1px solid var(--border) !important; color: var(--fg); border-radius: 5px; }
 .agent-hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.agent-hint.error { color: var(--danger); }
 kbd { font: 10px var(--font-mono); padding: 0 4px; border: 1px solid var(--border); border-radius: 3px; }
 
 /* Code panes */
