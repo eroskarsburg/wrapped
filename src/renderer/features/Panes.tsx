@@ -1,6 +1,6 @@
 import { Fragment, useRef } from 'react'
 import type { PaneNode, TabState } from '../../shared/types'
-import { useApp } from '../state/store'
+import { leaves, useApp } from '../state/store'
 import { DiffPane, EditorPane, MarkdownPane, NotebookPane } from './CodePanes'
 import { TerminalPane } from './TerminalPane'
 
@@ -40,23 +40,31 @@ function PaneTree({ node, tab, visible }: { node: PaneNode; tab: TabState; visib
   const closePane = useApp((state) => state.closePane)
   const focusPane = useApp((state) => state.focusPane)
   if (node.type === 'split') {
+    // A maximized pane hides its siblings with CSS, so that their sessions stay mounted.
+    const maximized = tab.maximizedPaneId
+    const holds = (child: PaneNode) => !maximized || leaves(child).some((leaf) => leaf.id === maximized)
     return (
       <div className={`split ${node.direction}`}>
         {node.children.map((child, index) => (
           <Fragment key={child.id}>
-            <div className="split-child" style={{ flexGrow: node.sizes[index], flexBasis: 0 }}>
-              <PaneTree node={child} tab={tab} visible={visible} />
+            <div className="split-child" style={{ flexGrow: node.sizes[index], flexBasis: 0, display: holds(child) ? undefined : 'none' }}>
+              <PaneTree node={child} tab={tab} visible={visible && holds(child)} />
             </div>
-            {index < node.children.length - 1 && <Splitter tab={tab} node={node} index={index} />}
+            {index < node.children.length - 1 && !maximized && <Splitter tab={tab} node={node} index={index} />}
           </Fragment>
         ))}
       </div>
     )
   }
   const active = tab.activePaneId === node.id
-  const multiple = tab.root.type === 'split'
+  const multiple = tab.root.type === 'split' && !tab.maximizedPaneId
   return (
     <div className={['pane', active && 'active', dim && multiple && !active && 'dimmed', multiple && 'bordered'].filter(Boolean).join(' ')} onMouseDown={() => focusPane(node.id)}>
+      {tab.maximizedPaneId === node.id && (
+        <button className="maximized-badge" title="Restaurar panes (Ctrl+Shift+Enter)" onClick={() => useApp.getState().toggleMaximize()}>
+          maximizado · {leaves(tab.root).length} panes
+        </button>
+      )}
       {node.kind === 'terminal' && <TerminalPane leaf={node} active={active} visible={visible} />}
       {node.kind === 'editor' && <EditorPane leaf={node} onClose={() => closePane(node.id)} />}
       {node.kind === 'markdown' && <MarkdownPane leaf={node} onClose={() => closePane(node.id)} />}

@@ -227,6 +227,7 @@ code, pre { font-family: var(--font-mono); }
 .pane { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
 .pane.bordered.active { box-shadow: inset 0 2px 0 var(--accent); }
 .pane.dimmed { opacity: 0.62; }
+.maximized-badge { position: absolute; top: 4px; right: 12px; z-index: 4; padding: 1px 8px; font: 11px var(--font-ui); color: var(--accent); background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; }
 
 .terminal-pane { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .terminal-pane.input-top { flex-direction: column-reverse; }
@@ -426,6 +427,10 @@ kbd { font: 10px var(--font-mono); padding: 0 4px; border: 1px solid var(--borde
 .palette-item { display: flex; align-items: baseline; gap: 10px; padding: 6px 10px; border-radius: 5px; cursor: pointer; }
 .palette-item.selected { background: var(--surface-2); }
 .palette-type { font-size: 10px; color: var(--muted); width: 54px; flex: none; }
+.palette-type.badge-ok { color: var(--ansi-2); }
+.palette-type.badge-fail { color: var(--danger); font-weight: 600; }
+.palette-filters { display: flex; gap: 14px; padding: 6px 12px; font: 11px var(--font-ui); color: var(--muted); border-bottom: 1px solid var(--border); }
+.palette-filters label { display: flex; align-items: center; gap: 4px; }
 .palette-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: inherit; }
 .palette-hint { margin-left: auto; color: var(--muted); font: 11px var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
 .palette-empty { padding: 12px; }

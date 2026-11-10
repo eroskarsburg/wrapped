@@ -30,6 +30,7 @@ export const actions: Action[] = [
   { id: 'split-right', label: 'Dividir pane à direita', keys: 'ctrl-shift-D', run: () => app().splitPane('row') },
   { id: 'split-down', label: 'Dividir pane para baixo', keys: 'ctrl-shift-E', run: () => app().splitPane('column') },
   { id: 'close-pane', label: 'Fechar pane', keys: 'ctrl-shift-X', run: () => app().closePane() },
+  { id: 'maximize-pane', label: 'Maximizar ou restaurar pane', keys: 'ctrl-shift-enter', run: () => app().toggleMaximize() },
   { id: 'next-pane', label: 'Próximo pane', keys: 'alt-right', run: () => app().focusAdjacent(1) },
   { id: 'previous-pane', label: 'Pane anterior', keys: 'alt-left', run: () => app().focusAdjacent(-1) },
   {
@@ -45,6 +46,8 @@ export const actions: Action[] = [
   { id: 'block-copy-output', label: 'Copiar saída do bloco selecionado', keys: 'ctrl-alt-c', run: () => emit('block-copy-output') },
   { id: 'block-copy-command', label: 'Copiar comando do bloco selecionado', keys: 'ctrl-alt-shift-C', run: () => emit('block-copy-command') },
   { id: 'block-bookmark', label: 'Marcar bloco selecionado', keys: 'ctrl-alt-b', run: () => emit('block-bookmark') },
+  { id: 'bookmark-previous', label: 'Ir ao bloco marcado anterior', keys: 'ctrl-alt-up', run: () => emit('bookmark-previous') },
+  { id: 'bookmark-next', label: 'Ir ao próximo bloco marcado', keys: 'ctrl-alt-down', run: () => emit('bookmark-next') },
   { id: 'block-filter', label: 'Filtrar saída do bloco selecionado', keys: 'ctrl-alt-f', run: () => emit('block-filter') },
   { id: 'clear-blocks', label: 'Limpar blocos', keys: 'ctrl-shift-K', run: () => app().activeSession()?.updateBlocks((blocks) => blocks.filter((b) => b.running)) },
   { id: 'sidebar-tabs', label: 'Mostrar abas', keys: 'ctrl-b', run: () => app().setSidebar('tabs') },

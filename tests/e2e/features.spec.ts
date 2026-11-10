@@ -113,7 +113,7 @@ test('walks history with the arrows and searches it with Ctrl+R', async () => {
   await page.keyboard.press('ArrowDown')
   await expect(input(page)).toHaveText('')
   await page.keyboard.press('Control+r')
-  await page.getByTestId('command-search').locator('input').fill('prim')
+  await page.getByTestId('command-search').getByPlaceholder('Buscar no histórico').fill('prim')
   await page.keyboard.press('Enter')
   await expect(input(page)).toHaveText('echo primeiro')
 })
@@ -502,4 +502,56 @@ test('suggests the command that usually comes next', async () => {
   await input(page).click()
   await page.keyboard.press('ArrowRight')
   await expect(input(page)).toHaveText('echo passo-dois')
+})
+
+test('maximizes a pane and keeps the others running', async () => {
+  wrapped = await launch({ settings: BASE })
+  const { page } = wrapped
+  await waitReady(page)
+  await page.keyboard.press('Control+Shift+D')
+  await expect(page.locator('.input-editor:not(.waiting)')).toHaveCount(2, { timeout: 20_000 })
+  await page.keyboard.press('Control+Shift+Enter')
+  await expect(page.locator('[data-pane]:visible')).toHaveCount(1)
+  await expect(page.locator('.maximized-badge')).toContainText('2 panes')
+  await run(page, 'echo so-no-maximizado')
+  await page.keyboard.press('Alt+ArrowLeft')
+  await expect(page.locator('[data-pane]:visible')).toHaveCount(1)
+  await expect(page.locator('[data-pane]:visible .block')).toHaveCount(0)
+  await page.keyboard.press('Control+Shift+Enter')
+  await expect(page.locator('[data-pane]:visible')).toHaveCount(2)
+  await expect(page.locator('.block-output', { hasText: 'so-no-maximizado' })).toBeVisible()
+})
+
+test('jumps between bookmarked blocks', async () => {
+  wrapped = await launch({ settings: BASE })
+  const { page } = wrapped
+  const first = await run(page, 'echo marcado-1')
+  await run(page, 'echo comum')
+  const third = await run(page, 'echo marcado-2')
+  for (const block of [first, third]) {
+    await block.locator('.block-header').hover()
+    await block.locator('button[title="Marcar"]').click()
+  }
+  await input(page).click()
+  await page.keyboard.press('Control+Alt+ArrowUp')
+  await expect(third).toHaveClass(/selected/)
+  await page.keyboard.press('Control+Alt+ArrowUp')
+  await expect(first).toHaveClass(/selected/)
+  await page.keyboard.press('Control+Alt+ArrowDown')
+  await expect(third).toHaveClass(/selected/)
+})
+
+test('shows status and filters failures in the history search', async () => {
+  wrapped = await launch({ settings: BASE })
+  const { page } = wrapped
+  await run(page, 'echo deu-certo')
+  await run(page, isWindows ? 'cmd /c "exit 4"' : '(exit 4)')
+  await waitReady(page)
+  await input(page).click()
+  await page.keyboard.press('Control+r')
+  const search = page.getByTestId('command-search')
+  await expect(search.locator('.palette-item', { hasText: 'deu-certo' }).locator('.badge-ok')).toHaveText('ok')
+  await expect(search.locator('.palette-item', { hasText: 'exit 4' }).locator('.badge-fail')).toHaveText('exit 4')
+  await search.getByLabel('só os que falharam').check()
+  await expect(search.locator('.palette-item')).toHaveCount(1)
 })

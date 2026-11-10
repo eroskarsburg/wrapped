@@ -226,6 +226,8 @@ export interface TabState {
   root: PaneNode
   activePaneId: string
   synced?: boolean
+  /** Pane shown alone over the whole tab, the others kept running out of sight. */
+  maximizedPaneId?: string
 }
 
 export interface WindowSession {

@@ -17,7 +17,7 @@ Inspirado no fluxo de trabalho do [Warp](https://www.warp.dev), mas local: sem c
 - Cada comando vira um bloco com status, duração, diretório e branch
 - Copiar, marcar, recolher, reexecutar, remover, exportar e enviar ao agente
 - Filtro por bloco (texto, regex, maiúsculas, linhas de contexto) e busca em todos os blocos
-- Cabeçalho fixo em saídas longas, navegação por teclado e seleção múltipla
+- Cabeçalho fixo em saídas longas, navegação por teclado (`Ctrl+Alt+↑/↓` salta entre blocos marcados) e seleção múltipla
 - Saída em background em bloco próprio; programas de tela cheia (`vim`, `less`) ocupam o pane inteiro
 - Links e caminhos clicáveis (inclusive `arquivo.ts:42:7`, aberto na linha), seleção inteligente e ocultação automática de secrets
 
@@ -33,12 +33,12 @@ Inspirado no fluxo de trabalho do [Warp](https://www.warp.dev), mas local: sem c
 - Detecção de PowerShell, Prompt de Comando, Git Bash e distros WSL no Windows; do shell de login, bash, zsh, fish e pwsh no Linux
 - Layouts em TOML com panes, comandos e parâmetros
 - Temas em YAML, gradiente, imagem de fundo e criação de tema a partir de uma imagem
-- Abas verticais ou horizontais, cor por diretório, split panes e sincronização de input
+- Abas verticais ou horizontais, cor por diretório, split panes, maximizar pane (`Ctrl+Shift+Enter`) e sincronização de input
 - Atalhos editáveis, hotkey global e janela Quake
 
 **Drive local**
 - Workflows com `{{argumentos}}`, notebooks executáveis, prompts e coleções de variáveis de ambiente
-- Command palette (`Ctrl+Shift+P`) e busca no histórico (`Ctrl+R`)
+- Command palette (`Ctrl+Shift+P`) e busca no histórico (`Ctrl+R`) com status, duração e tempo de cada comando, e filtros por falha e diretório
 
 **Código e agente**
 - Explorador de arquivos, busca global, editor, visualizador de Markdown e revisão de diff

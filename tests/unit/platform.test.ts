@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { commandRequest, findLinks, modelRequestOptions, parseShellHistory, predictNextCommand, resolveOutputPath } from '../../src/shared/logic'
+import { commandRequest, findLinks, formatAgo, modelRequestOptions, parseShellHistory, predictNextCommand, resolveOutputPath } from '../../src/shared/logic'
 
 const targets = (text: string) => findLinks(text).map((link) => link.target)
 
@@ -101,5 +101,16 @@ describe('predictNextCommand', () => {
   })
   it('returns null without data', () => {
     expect(predictNextCommand(h('ls'), 'ls')).toBeNull()
+  })
+})
+
+describe('formatAgo', () => {
+  const now = 10 ** 12
+  it('describes elapsed time', () => {
+    expect(formatAgo(now - 5_000, now)).toBe('agora')
+    expect(formatAgo(now - 5 * 60_000, now)).toBe('há 5 min')
+    expect(formatAgo(now - 3 * 3_600_000, now)).toBe('há 3 h')
+    expect(formatAgo(now - 2 * 86_400_000, now)).toBe('há 2 d')
+    expect(formatAgo(now - 65 * 86_400_000, now)).toBe('há 2 meses')
   })
 })
