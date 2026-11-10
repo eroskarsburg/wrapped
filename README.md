@@ -26,7 +26,7 @@ Inspirado no fluxo de trabalho do [Warp](https://www.warp.dev), mas local: sem c
 - Autosuggestions do histórico (→ aceita) e completions com specs de centenas de CLIs
 - Com o input vazio, sugere o comando que você costuma rodar depois do último, aprendido do histórico
 - Command inspector ao passar o mouse, correção de comandos, expansão de aliases e modo Vim
-- Input fixo embaixo, em cima ou clássico; prompt em chips ou o do seu shell
+- Input fixo embaixo, em cima ou clássico; prompt em chips ou o do seu shell, com um chip que mostra arquivos e linhas alterados no git
 
 **Terminais personalizados**
 - Perfis com shell, argumentos, diretório, variáveis, ícone, cor, tema e comandos de início
