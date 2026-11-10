@@ -490,3 +490,16 @@ test('turns a "#" request into a command without running it', async () => {
     server.close()
   }
 })
+
+test('suggests the command that usually comes next', async () => {
+  wrapped = await launch({ settings: BASE })
+  const { page } = wrapped
+  await run(page, 'echo passo-um')
+  await run(page, 'echo passo-dois')
+  await run(page, 'echo passo-um')
+  await waitReady(page)
+  await expect(page.locator('.ghost')).toHaveText('echo passo-dois')
+  await input(page).click()
+  await page.keyboard.press('ArrowRight')
+  await expect(input(page)).toHaveText('echo passo-dois')
+})

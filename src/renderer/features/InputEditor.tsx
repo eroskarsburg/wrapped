@@ -4,7 +4,7 @@ import { Compartment, EditorState, Prec, RangeSetBuilder, StateEffect, StateFiel
 import { Decoration, EditorView, hoverTooltip, keymap, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view'
 import { vim } from '@replit/codemirror-vim'
 import { useEffect, useRef, useState } from 'react'
-import { commandRequest, looksLikeNaturalLanguage, tokenize } from '../../shared/logic'
+import { commandRequest, looksLikeNaturalLanguage, predictNextCommand, tokenize } from '../../shared/logic'
 import type { Completion } from '../../shared/types'
 import { api } from '../rpc'
 import { history, knownCommands, useApp } from '../state/store'
@@ -398,6 +398,12 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
     })
     view.current = editor
     if (active) editor.focus()
+    // With the input empty, the ghost text proposes what usually follows the last command.
+    const last = [...session.blocks].reverse().find((block) => !block.background && !block.running && block.command)
+    if (settings.nextCommandSuggestions && last) {
+      const next = predictNextCommand(history, last.command, session.cwd)
+      if (next) editor.dispatch({ effects: setGhost.of(next) })
+    }
     return () => {
       editor.destroy()
       view.current = null

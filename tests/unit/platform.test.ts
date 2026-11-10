@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { commandRequest, findLinks, modelRequestOptions, parseShellHistory, resolveOutputPath } from '../../src/shared/logic'
+import { commandRequest, findLinks, modelRequestOptions, parseShellHistory, predictNextCommand, resolveOutputPath } from '../../src/shared/logic'
 
 const targets = (text: string) => findLinks(text).map((link) => link.target)
 
@@ -79,5 +79,27 @@ describe('commandRequest', () => {
     expect(commandRequest('ls -la')).toBeNull()
     expect(commandRequest('#')).toBeNull()
     expect(commandRequest('echo # nao')).toBeNull()
+  })
+})
+
+describe('predictNextCommand', () => {
+  const h = (...commands: string[]) => commands.map((command) => ({ command }))
+  it('picks the most frequent follow-up', () => {
+    expect(predictNextCommand(h('git add .', 'git commit', 'ls', 'git add .', 'git commit', 'git add .', 'git status'), 'git add .')).toBe('git commit')
+  })
+  it('breaks ties with the most recent and skips repeats', () => {
+    expect(predictNextCommand(h('make', 'make', 'make test', 'make', 'make run'), 'make')).toBe('make run')
+  })
+  it('prefers follow-ups from the same directory', () => {
+    const history = [
+      { command: 'npm i', cwd: '/a' }, { command: 'npm run dev', cwd: '/a' },
+      { command: 'npm i', cwd: '/b' }, { command: 'npm test', cwd: '/b' },
+      { command: 'npm i', cwd: '/b' }, { command: 'npm test', cwd: '/b' },
+    ]
+    expect(predictNextCommand(history, 'npm i', '/a')).toBe('npm run dev')
+    expect(predictNextCommand(history, 'npm i', '/b')).toBe('npm test')
+  })
+  it('returns null without data', () => {
+    expect(predictNextCommand(h('ls'), 'ls')).toBeNull()
   })
 })

@@ -507,3 +507,40 @@ export function commandRequest(text: string): string | null {
   const match = /^#\s*(\S[\s\S]*)$/.exec(text.trim())
   return match ? match[1].trim() : null
 }
+
+// --- Next command prediction ----------------------------------------------------------------
+
+/**
+ * The command most often run right after `previous`, on a tie the most recent. Follow-ups seen
+ * in the same directory win over the rest of the history. History is oldest first.
+ */
+export function predictNextCommand(
+  history: { command: string; cwd?: string }[],
+  previous: string,
+  cwd?: string,
+): string | null {
+  const local = new Map<string, { count: number; last: number }>()
+  const global = new Map<string, { count: number; last: number }>()
+  const target = previous.trim()
+  for (let i = 0; i < history.length - 1; i++) {
+    if (history[i].command.trim() !== target) continue
+    const next = history[i + 1]
+    const command = next.command.trim()
+    if (!command || command === target) continue
+    for (const scores of cwd && next.cwd === cwd ? [local, global] : [global]) {
+      const entry = scores.get(command) ?? { count: 0, last: 0 }
+      entry.count++
+      entry.last = i
+      scores.set(command, entry)
+    }
+  }
+  let best: string | null = null
+  let bestEntry = { count: 0, last: -1 }
+  for (const [command, entry] of local.size ? local : global) {
+    if (entry.count > bestEntry.count || (entry.count === bestEntry.count && entry.last > bestEntry.last)) {
+      best = command
+      bestEntry = entry
+    }
+  }
+  return best
+}
