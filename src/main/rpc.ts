@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs'
 import type { Settings } from '../shared/settings'
 import type { EnvCollection, HistoryEntry, KnowledgeKind, Profile, TabConfig, Theme, WindowSession } from '../shared/types'
 import { agentConversation, generateCommand, resetConversation } from './agent'
-import { gitDiff, gitStatus, listDir, readText, searchFiles, writeText } from './code'
+import { gitDiff, gitStats, gitStatus, listDir, readText, searchFiles, writeText } from './code'
 import { completions, describeToken } from './completions'
 import { applySettings } from './window'
 import { configDir } from './paths'
@@ -108,6 +108,7 @@ export const handlers = {
   searchFiles: (_: WebContents, root: string, query: string) => searchFiles(root, query),
   gitStatus: (_: WebContents, cwd: string) => gitStatus(cwd),
   gitDiff: (_: WebContents, cwd: string, file?: string) => gitDiff(cwd, file),
+  gitStats: (_: WebContents, cwd: string) => gitStats(cwd),
 
   // Agent
   agentSend(sender: WebContents, id: string, text: string, context: { cwd?: string; shell?: string; paneId?: string }) {

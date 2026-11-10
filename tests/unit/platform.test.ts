@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { commandRequest, findLinks, formatAgo, modelRequestOptions, parseShellHistory, predictNextCommand, resolveOutputPath } from '../../src/shared/logic'
+import { commandRequest, findLinks, formatAgo, parseGitStats, modelRequestOptions, parseShellHistory, predictNextCommand, resolveOutputPath } from '../../src/shared/logic'
 
 const targets = (text: string) => findLinks(text).map((link) => link.target)
 
@@ -112,5 +112,15 @@ describe('formatAgo', () => {
     expect(formatAgo(now - 3 * 3_600_000, now)).toBe('há 3 h')
     expect(formatAgo(now - 2 * 86_400_000, now)).toBe('há 2 d')
     expect(formatAgo(now - 65 * 86_400_000, now)).toBe('há 2 meses')
+  })
+})
+
+describe('parseGitStats', () => {
+  it('sums lines, counts binaries and untracked files', () => {
+    expect(parseGitStats('10\t2\tsrc/a.ts\n-\t-\timg.png\n1\t0\tb.md\n', ' M src/a.ts\n?? novo.txt\n?? outro.txt\n'))
+      .toEqual({ files: 5, added: 11, removed: 2 })
+  })
+  it('is empty for a clean tree', () => {
+    expect(parseGitStats('', '')).toEqual({ files: 0, added: 0, removed: 0 })
   })
 })

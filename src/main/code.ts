@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import { join, relative } from 'node:path'
 import { promisify } from 'node:util'
+import { parseGitStats, type GitDiffStats } from '../shared/logic'
 import type { FileEntry, GitStatusEntry, SearchHit } from '../shared/types'
 
 const exec = promisify(execFile)
@@ -79,4 +80,16 @@ export async function gitDiff(cwd: string, file?: string): Promise<string> {
   if (diff || !file) return diff
   const text = await fs.readFile(join(cwd, file), 'utf8').catch(() => '')
   return text ? `+++ ${relative(cwd, join(cwd, file))} (novo)\n${text.split('\n').map((l) => `+${l}`).join('\n')}` : ''
+}
+
+/** Changed files and lines against HEAD, or null outside a repository. */
+export async function gitStats(cwd: string): Promise<GitDiffStats | null> {
+  try {
+    const porcelain = await git(cwd, 'status', '--porcelain=v1', '-uall')
+    // A repository without commits has no HEAD to diff against; its files show as untracked.
+    const numstat = await git(cwd, 'diff', 'HEAD', '--numstat').catch(() => '')
+    return parseGitStats(numstat, porcelain)
+  } catch {
+    return null
+  }
 }

@@ -323,6 +323,10 @@ code, pre { font-family: var(--font-mono); }
 .chip-cwd { color: var(--ansi-4); }
 .chip-git { color: var(--ansi-2); }
 .chip-exit { color: var(--danger); }
+.chip-diff { font: inherit; border: 0; cursor: pointer; }
+.chip-diff:hover { color: var(--fg); }
+.diff-add { color: var(--ansi-2); }
+.diff-del { color: var(--danger); }
 .shell-prompt { margin: 0 0 4px; font-size: 12px; white-space: pre-wrap; color: var(--muted); }
 .editor-host .cm-editor { background: transparent; font: var(--font-size) / var(--line-height) var(--font-mono); max-height: 40vh; }
 .editor-host .cm-editor.cm-focused { outline: none; }

@@ -558,3 +558,26 @@ export function formatAgo(at: number, now = Date.now()): string {
   const months = Math.floor(days / 30)
   return `há ${months} ${months === 1 ? 'mês' : 'meses'}`
 }
+
+// --- Git diff summary -----------------------------------------------------------------------
+
+export interface GitDiffStats {
+  files: number
+  added: number
+  removed: number
+}
+
+/** Sums `git diff --numstat` and counts untracked files from `git status --porcelain`. */
+export function parseGitStats(numstat: string, porcelain: string): GitDiffStats {
+  const stats: GitDiffStats = { files: 0, added: 0, removed: 0 }
+  for (const line of numstat.split('\n')) {
+    const match = /^(\d+|-)\t(\d+|-)\t/.exec(line)
+    if (!match) continue
+    stats.files++
+    // Binary files show "-" in both columns.
+    if (match[1] !== '-') stats.added += Number(match[1])
+    if (match[2] !== '-') stats.removed += Number(match[2])
+  }
+  stats.files += porcelain.split('\n').filter((line) => line.startsWith('??')).length
+  return stats
+}

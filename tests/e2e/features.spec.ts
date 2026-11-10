@@ -555,3 +555,19 @@ test('shows status and filters failures in the history search', async () => {
   await search.getByLabel('só os que falharam').check()
   await expect(search.locator('.palette-item')).toHaveCount(1)
 })
+
+test('shows a git diff chip that opens the changes panel', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wrapped-repo-'))
+  writeFileSync(join(dir, 'a.txt'), 'um\n')
+  wrapped = await launch({ settings: BASE })
+  const { page } = wrapped
+  await run(page, `cd "${dir}"; git init -q; git add .; git -c user.name=t -c user.email=t@t commit -qm init`)
+  await expect(page.locator('.chip-git')).toBeVisible({ timeout: 10_000 })
+  await expect(page.locator('.chip-diff')).toHaveCount(0)
+  writeFileSync(join(dir, 'a.txt'), 'um\ndois\ntres\n')
+  writeFileSync(join(dir, 'novo.txt'), 'x\n')
+  await run(page, 'echo atualiza')
+  await expect(page.locator('.chip-diff')).toHaveText('2 arquivos +2 −0', { timeout: 10_000 })
+  await page.locator('.chip-diff').click()
+  await expect(page.locator('.file-row', { hasText: 'novo.txt' })).toBeVisible()
+})
