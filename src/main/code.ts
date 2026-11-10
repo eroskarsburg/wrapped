@@ -27,7 +27,10 @@ export async function writeText(path: string, content: string): Promise<void> {
 }
 
 async function git(cwd: string, ...args: string[]): Promise<string> {
-  const { stdout } = await exec('git', args, { cwd, windowsHide: true, maxBuffer: 1 << 25, timeout: 15000 })
+  // These calls run in the background while the user works in the same repository; without this,
+  // "git status" takes index.lock and a commit started at the same moment fails.
+  const env = { ...process.env, GIT_OPTIONAL_LOCKS: '0' }
+  const { stdout } = await exec('git', args, { cwd, env, windowsHide: true, maxBuffer: 1 << 25, timeout: 15000 })
   return stdout
 }
 
@@ -85,9 +88,10 @@ export async function gitDiff(cwd: string, file?: string): Promise<string> {
 /** Changed files and lines against HEAD, or null outside a repository. */
 export async function gitStats(cwd: string): Promise<GitDiffStats | null> {
   try {
-    const porcelain = await git(cwd, 'status', '--porcelain=v1', '-uall')
-    // A repository without commits has no HEAD to diff against; its files show as untracked.
-    const numstat = await git(cwd, 'diff', 'HEAD', '--numstat').catch(() => '')
+    // Untracked directories count as one entry: listing every file in them is slow in large trees.
+    const porcelain = await git(cwd, 'status', '--porcelain=v1', '--untracked-files=normal')
+    // A repository without commits has no HEAD to diff against, only staged files.
+    const numstat = await git(cwd, 'diff', 'HEAD', '--numstat').catch(() => git(cwd, 'diff', '--cached', '--numstat').catch(() => ''))
     return parseGitStats(numstat, porcelain)
   } catch {
     return null

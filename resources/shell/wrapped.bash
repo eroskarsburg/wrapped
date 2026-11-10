@@ -46,18 +46,11 @@ __wrapped_cwd() {
   fi
 }
 
+# First in PROMPT_COMMAND, while $? still holds the command's status.
 __wrapped_precmd() {
   local code=$?
   if [ -n "${__wrapped_ran:-}" ]; then printf '\033]133;D;%s\007' "$code"; fi
   __wrapped_ran=
-  # The user's own prompt hooks (mise, direnv, starship) run with the command's status, then
-  # whatever PS1 they set is kept for the "shell" prompt mode and replaced by the markers.
-  if [ -n "${__wrapped_user_prompt_command:-}" ]; then
-    (exit "$code")
-    eval "$__wrapped_user_prompt_command"
-  fi
-  if [ "$PS1" != "$__wrapped_ps1" ]; then __wrapped_user_ps1=$PS1; fi
-  PS1=$__wrapped_ps1
   local json
   json=$(printf '{"cwd":"%s","git":"%s","shell":"bash","venv":"%s","user":"%s","host":"%s"}' \
     "$(__wrapped_json_escape "$(__wrapped_cwd)")" \
@@ -70,9 +63,18 @@ __wrapped_precmd() {
     __wrapped_aliases_sent=1
     __wrapped_send_aliases
   fi
+  # The user's own hooks come next and expect the status of the command, not ours.
+  return "$code"
+}
+
+# Last in PROMPT_COMMAND: whatever PS1 the user's hooks set (starship rewrites it every time) is
+# kept for the "shell" prompt mode and replaced by the markers.
+__wrapped_prompt() {
+  if [ "$PS1" != "$__wrapped_ps1" ]; then __wrapped_user_ps1=$PS1; fi
+  PS1=$__wrapped_ps1
   if [ "${WRAPPED_HONOR_PROMPT:-}" = "1" ]; then
     # Control characters are not valid inside a JSON string, and the UI shows plain text anyway.
-    local shown
+    local shown json
     shown=$(printf '%s' "${__wrapped_user_ps1@P}" | sed 's/\x1b\[[0-9;]*[A-Za-z]//g; s/\x1b\][^\x07]*\x07//g' | tr -d '\001\002\033\r\n')
     json=$(printf '{"prompt":"%s"}' "$(__wrapped_json_escape "$shown")")
     printf '\033]7777;%s\007' "$(__wrapped_hex "$json")"
@@ -96,12 +98,17 @@ __wrapped_send_aliases() {
 __wrapped_user_ps1=$PS1
 __wrapped_ps1=$'\[\033]133;A\007\033]133;B\007\] '
 PS1=$__wrapped_ps1
-# Bash 5.1 accepts an array here; its elements run in order.
-__wrapped_user_prompt_command=$(IFS=';'; printf '%s' "${PROMPT_COMMAND[*]:-}")
-unset PROMPT_COMMAND
 PS2=''
 # PS0 expands in this shell right after a line is accepted, so the := assignment marks a real run.
-# Its visible output lands before the clear and is discarded along with the echo.
-PS0='${__wrapped_ran:=1}'$'\033[2J\033[3J\033[H\033]133;C\007'
-PROMPT_COMMAND=__wrapped_precmd
+# Its visible output lands before the clear and is discarded along with the echo. The user's own
+# PS0 stays in front: starship times commands with it.
+PS0=${PS0:-}'${__wrapped_ran:=1}'$'\033[2J\033[3J\033[H\033]133;C\007'
+# The user's hooks (mise, direnv, starship, zoxide) stay in PROMPT_COMMAND, where tools such as
+# zoxide look for them, between the two functions above.
+if [ "${BASH_VERSINFO[0]}" -gt 5 ] || { [ "${BASH_VERSINFO[0]}" -eq 5 ] && [ "${BASH_VERSINFO[1]}" -ge 1 ]; }; then
+  # Bash 5.1 runs each element of an array with the status of the last command.
+  PROMPT_COMMAND=(__wrapped_precmd "${PROMPT_COMMAND[@]}" __wrapped_prompt)
+else
+  PROMPT_COMMAND="__wrapped_precmd"$'\n'"${PROMPT_COMMAND:-}"$'\n'"__wrapped_prompt"
+fi
 bind 'set enable-bracketed-paste on' 2>/dev/null

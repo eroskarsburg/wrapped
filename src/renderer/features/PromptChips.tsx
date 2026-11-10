@@ -12,7 +12,7 @@ export function PromptChips({ session }: { session: PaneSession }) {
   const [now, setNow] = useState(() => new Date())
   const [diff, setDiff] = useState<GitDiffStats | null>(null)
   const { meta, profile, lastExit } = session
-  const showDiff = chips.includes('git') && !!meta.git && !!meta.cwd
+  const showDiff = chips.includes('diff') && !!meta.git && !!meta.cwd
 
   // Refreshed whenever the prompt comes back, since any command may have changed the tree.
   useEffect(() => {

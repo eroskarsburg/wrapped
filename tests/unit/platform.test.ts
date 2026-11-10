@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { commandRequest, findLinks, formatAgo, parseGitStats, modelRequestOptions, parseShellHistory, predictNextCommand, resolveOutputPath } from '../../src/shared/logic'
+import { commandRequest, findLinks, formatAgo, parseGitStats, unmetafy, modelRequestOptions, parseShellHistory, predictNextCommand, resolveOutputPath } from '../../src/shared/logic'
 
 const targets = (text: string) => findLinks(text).map((link) => link.target)
 
@@ -122,5 +122,43 @@ describe('parseGitStats', () => {
   })
   it('is empty for a clean tree', () => {
     expect(parseGitStats('', '')).toEqual({ files: 0, added: 0, removed: 0 })
+  })
+})
+
+describe('regressions found while testing', () => {
+  it('runs a pasted script that starts with a comment instead of asking the model', () => {
+    expect(commandRequest('# instala dependencias\nnpm install')).toBeNull()
+  })
+  it('does not link versions and fractions', () => {
+    expect(findLinks('node/20.1 e 3/4.5 e pkg/v1.2').map((l) => l.target)).toEqual([])
+    expect(findLinks('./dist/v1.2 lib/x.so.6 src/a.test.ts:9').map((l) => l.target)).toEqual(['./dist/v1.2', 'lib/x.so.6', 'src/a.test.ts'])
+  })
+  it('decodes accented commands from a metafied zsh history', () => {
+    // "É" is C3 89 in UTF-8, and 0x89 is in the metafied range: zsh writes C3 83 A9.
+    const bytes = Uint8Array.from([0x65, 0x63, 0x68, 0x6f, 0x20, 0xc3, 0x83, 0xa9])
+    expect(new TextDecoder().decode(unmetafy(bytes))).toBe('echo É')
+  })
+})
+
+describe('regressions found in review', () => {
+  const first = (text: string) => findLinks(text)[0]
+  it('reads the line suffix on absolute and Windows paths', () => {
+    expect(first('at (/home/x/a.js:3:1)')).toMatchObject({ target: '/home/x/a.js', line: 3, column: 1 })
+    expect(first('C:\\Users\\x\\a.ts:10:2 erro')).toMatchObject({ target: 'C:\\Users\\x\\a.ts', line: 10, column: 2 })
+    expect(first('http://localhost:3000/a')).toMatchObject({ target: 'http://localhost:3000/a', line: undefined })
+  })
+  it('opens file:// URLs as paths', () => {
+    expect(findLinks('error at file:///home/x/a.js:3:1').map((l) => [l.target, l.line])).toEqual([['/home/x/a.js', 3]])
+  })
+  it('skips protocol versions and media types, and git diff prefixes', () => {
+    expect(findLinks('HTTP/1.1 200 application/vnd.api text/html npm/10.2').length).toBe(0)
+    expect(first('--- a/src/main.ts').target).toBe('src/main.ts')
+    expect(first('+++ b/src/main.ts').target).toBe('src/main.ts')
+    expect(first('veja a/src/main.ts').target).toBe('a/src/main.ts')
+  })
+  it('resolves paths of a WSL pane inside the distro', () => {
+    const cwd = '\\\\wsl.localhost\\Ubuntu\\home\\x\\proj'
+    expect(resolveOutputPath('/home/x/a.ts', cwd, 'C:\\Users\\x')).toBe('\\\\wsl.localhost\\Ubuntu\\home\\x\\a.ts')
+    expect(resolveOutputPath('src/a.ts', cwd, 'C:\\Users\\x')).toBe('\\\\wsl.localhost\\Ubuntu\\home\\x\\proj\\src\\a.ts')
   })
 })

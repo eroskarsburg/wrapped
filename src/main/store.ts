@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import { parseShellHistory, validateTabConfig } from '../shared/logic'
+import { parseShellHistory, unmetafy, validateTabConfig } from '../shared/logic'
 import { defaultSettings, mergeSettings, type Settings } from '../shared/settings'
 import { builtinThemes, parseThemeFile, themeToFile } from '../shared/themes'
 import type {
@@ -241,16 +241,17 @@ export async function loadHistory(): Promise<HistoryEntry[]> {
   const entries: HistoryEntry[] = []
   const zdot = process.env.ZDOTDIR || homedir()
   const imports: [string, 'plain' | 'zsh' | 'fish'][] = [
-    [join(process.env.APPDATA ?? '', 'Microsoft', 'Windows', 'PowerShell', 'PSReadLine', 'ConsoleHost_history.txt'), 'plain'],
+    [process.env.APPDATA ? join(process.env.APPDATA, 'Microsoft', 'Windows', 'PowerShell', 'PSReadLine', 'ConsoleHost_history.txt') : '', 'plain'],
     [join(homedir(), '.local', 'share', 'powershell', 'PSReadLine', 'ConsoleHost_history.txt'), 'plain'],
     [join(homedir(), '.bash_history'), 'plain'],
     [join(zdot, '.zsh_history'), 'zsh'],
     [join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'fish', 'fish_history'), 'fish'],
   ]
-  if (!process.env.WRAPPED_HOME) {
+  if (!process.env.WRAPPED_HOME && loadSettings().terminal.importShellHistory) {
     for (const [file, format] of imports) {
-      // zsh may write bytes that are not UTF-8; latin1 keeps them from throwing.
-      const text = await fs.readFile(file, format === 'zsh' ? 'latin1' : 'utf8').catch(() => '')
+      const bytes = file ? await fs.readFile(file).catch(() => null) : null
+      if (!bytes) continue
+      const text = new TextDecoder().decode(format === 'zsh' ? unmetafy(bytes) : bytes)
       for (const command of parseShellHistory(text, format).slice(-MAX_HISTORY)) entries.push({ command })
     }
   }

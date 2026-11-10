@@ -145,6 +145,7 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
   const brackets = useApp((state) => state.settings.input.closeBrackets)
   const inputDraft = useApp((state) => state.inputDraft)
   const agentEnabled = useApp((state) => state.settings.agent.enabled)
+  const generation = useApp((state) => state.settings.agent.commandGeneration)
 
   const setPopup = (value: Popup | null) => {
     popupRef.current = value
@@ -222,7 +223,8 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
     const editor = view.current
     if (!editor) return
     const command = editor.state.doc.toString()
-    const request = commandRequest(command)
+    // With the feature off, a line that starts with "#" goes to the shell as the comment it is.
+    const request = useApp.getState().settings.agent.commandGeneration ? commandRequest(command) : null
     if (request) {
       setPopup(null)
       void generate(request, command)
@@ -367,7 +369,7 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
       const ghost = input.autosuggestions ? suggestFromHistory(text, session.cwd) : ''
       if (ghost) queueMicrotask(() => view.current?.dispatch({ effects: setGhost.of(ghost) }))
       setAgentHint(agent.enabled && agent.naturalLanguageDetection && looksLikeNaturalLanguage(text, (word) => isKnownCommand(word, session.meta.aliases)))
-      setAiRequest(commandRequest(text) !== null)
+      setAiRequest(agent.commandGeneration && commandRequest(text) !== null)
       if (noticeFor.current !== null && noticeFor.current !== text) {
         noticeFor.current = null
         setNotice(null)
@@ -452,7 +454,7 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
       <div className="editor-host" ref={parent} />
       {notice && <div className={notice.tone === 'error' ? 'agent-hint error' : 'agent-hint'} data-testid="input-notice">{notice.text}</div>}
       {!notice && aiRequest && <div className="agent-hint"><kbd>Enter</kbd> gera um comando a partir da descrição, sem executar.</div>}
-      {!notice && !aiRequest && agentHint && agentEnabled && <div className="agent-hint">Parece linguagem natural. <kbd>Ctrl+Enter</kbd> envia ao agente, ou comece com <kbd>#</kbd> para gerar um comando.</div>}
+      {!notice && !aiRequest && agentHint && agentEnabled && <div className="agent-hint">Parece linguagem natural. <kbd>Ctrl+Enter</kbd> envia ao agente{generation && <>, ou comece com <kbd>#</kbd> para gerar um comando</>}.</div>}
     </div>
   )
 }

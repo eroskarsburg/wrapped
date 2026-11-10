@@ -432,15 +432,20 @@ command = "bash"
 kind = "bash"
 
 [env]
-PROMPT_COMMAND = "__hook_count=$(( \${__hook_count:-0} + 1 )); PS1='custom> '"
+PROMPT_COMMAND = "__hook_status=$?; __hook_count=$(( \${__hook_count:-0} + 1 )); PS1='custom> '"
 `)
   wrapped = await launch({ settings: '[terminal]\ndefaultProfile = "user-hook"\nrestoreSession = false\n', home })
   const { page } = wrapped
   await run(page, 'echo primeiro')
   const block = await run(page, 'echo "hooks-$__hook_count"')
   await expect(block.locator('.block-output')).toHaveText(/^hooks-[2-9]/)
-  // A hook that rewrites PS1 must not take the markers away: the third block still ends.
-  await run(page, 'echo terceiro')
+  // A hook that rewrites PS1 must not take the markers away: the next blocks still end.
+  await run(page, '(exit 7)')
+  const status = await run(page, 'echo "status-$__hook_status"')
+  await expect(status.locator('.block-output')).toHaveText(/^status-7/)
+  // Tools such as zoxide check that their hook is still listed in PROMPT_COMMAND.
+  const listed = await run(page, '[[ ${PROMPT_COMMAND[*]} == *__hook_count* ]] && echo listado')
+  await expect(listed.locator('.block-output')).toHaveText(/^listado/)
 })
 
 test('turns a "#" request into a command without running it', async () => {
@@ -570,4 +575,50 @@ test('shows a git diff chip that opens the changes panel', async () => {
   await expect(page.locator('.chip-diff')).toHaveText('2 arquivos +2 −0', { timeout: 10_000 })
   await page.locator('.chip-diff').click()
   await expect(page.locator('.file-row', { hasText: 'novo.txt' })).toBeVisible()
+})
+
+test('turns the new features off through the settings', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wrapped-repo-'))
+  writeFileSync(join(dir, 'a.txt'), 'um\n')
+  wrapped = await launch({
+    settings: `[appearance]\npromptChips = ["cwd", "git"]\n[input]\nnextCommandSuggestions = false\n[agent]\ncommandGeneration = false\n[terminal]\nfileLinks = false\ndefaultProfile = "${SHELL}"\nrestoreSession = false\n`,
+  })
+  const { page } = wrapped
+  await run(page, `cd "${dir}"; git init -q; git add .; git -c user.name=t -c user.email=t@t commit -qm init`)
+  writeFileSync(join(dir, 'a.txt'), 'um\ndois\n')
+  const block = await run(page, 'echo "https://example.com e src/main/pty.ts:3"')
+  await expect(block.locator('a.link')).toHaveCount(1)
+  await expect(page.locator('.chip-git')).toBeVisible()
+  await expect(page.locator('.chip-diff')).toHaveCount(0)
+  // The same command ran before, so a prediction would show here if the setting were on.
+  await run(page, 'echo depois')
+  await run(page, 'echo "https://example.com e src/main/pty.ts:3"')
+  await waitReady(page)
+  await expect(page.locator('.ghost')).toHaveCount(0)
+  // With generation off, "#" goes to the shell as the comment it is, and nothing asks the model.
+  await input(page).click()
+  await page.keyboard.insertText('# so um comentario')
+  await page.keyboard.press('Enter')
+  await expect(input(page)).toHaveText('')
+  await expect(page.getByTestId('input-notice')).toHaveCount(0)
+  const after = await run(page, 'echo segue-vivo')
+  await expect(after.locator('.block-output')).toHaveText(/^segue-vivo/)
+})
+
+test('brings a hidden pane to the front when it gets the focus while another is maximized', async () => {
+  wrapped = await launch({ settings: BASE })
+  const { page } = wrapped
+  await waitReady(page)
+  await run(page, 'echo pane-da-esquerda')
+  await page.keyboard.press('Control+Shift+D')
+  await expect(page.locator('.input-editor:not(.waiting)')).toHaveCount(2, { timeout: 20_000 })
+  await page.keyboard.press('Control+Shift+Enter')
+  await expect(page.locator('[data-pane]:visible .block')).toHaveCount(0)
+  await page.keyboard.press('Control+Shift+P')
+  await page.getByTestId('palette').locator('.palette-item', { has: page.locator('.palette-type', { hasText: 'sessão' }) }).first().click()
+  await expect(page.locator('[data-pane]:visible')).toHaveCount(1)
+  await expect(page.locator('[data-pane]:visible .block-output')).toHaveText(/^pane-da-esquerda/)
+  await page.keyboard.press('Control+Shift+X')
+  await expect(page.locator('[data-pane]:visible')).toHaveCount(1)
+  await expect(page.locator('.maximized-badge')).toHaveCount(0)
 })

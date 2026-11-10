@@ -58,12 +58,14 @@ function renderLine(line: StyledLine, ranges: Range[]): ReactNode {
 
 interface LineProps {
   line: StyledLine
+  /** Whether file paths become links; URLs always do. */
+  fileLinks: boolean
   find: RegExp | null
   currentMatch: number | null
   secrets: RegExp[] | null
 }
 
-const OutputLine = memo(function OutputLine({ line, find, currentMatch, secrets }: LineProps) {
+const OutputLine = memo(function OutputLine({ line, fileLinks, find, currentMatch, secrets }: LineProps) {
   const text = lineText(line)
   const ranges: Range[] = []
   if (secrets) for (const [from, to] of secretRanges(text, secrets)) ranges.push({ from, to, mark: 'secret' })
@@ -76,6 +78,7 @@ const OutputLine = memo(function OutputLine({ line, find, currentMatch, secrets 
     }
   }
   for (const link of findLinks(text)) {
+    if (!link.url && !fileLinks) continue
     if (!ranges.some((r) => link.from < r.to && link.to > r.from)) {
       const target = link.url ? link.target : `${link.target}${link.line ? `:${link.line}` : ''}`
       ranges.push({ from: link.from, to: link.to, mark: 'link', target })
@@ -148,6 +151,7 @@ export const BlockView = memo(function BlockView({ block, session, find, current
   const sendToAgent = useApp((state) => state.sendToAgent)
   const fillInput = useApp((state) => state.fillInput)
   const showBottom = useApp((state) => state.settings.appearance.jumpToBottom)
+  const fileLinks = useApp((state) => state.settings.terminal.fileLinks)
   const activeSecrets = revealed ? null : secrets
 
   useEffect(() => {
@@ -235,7 +239,7 @@ export const BlockView = memo(function BlockView({ block, session, find, current
             <div className="chunk" key={i} style={{ containIntrinsicHeight: `auto ${chunk.length * 18}px` }}>
               {chunk.map(({ index, line }) => (
                 <OutputLine
-                  key={index} line={line} find={find} secrets={activeSecrets}
+                  key={index} line={line} fileLinks={fileLinks} find={find} secrets={activeSecrets}
                   currentMatch={currentMatch?.blockId === block.id && currentMatch.line === index ? currentMatch.index : null}
                 />
               ))}

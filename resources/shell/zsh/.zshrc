@@ -73,7 +73,8 @@ __wrapped_prompt() {
   RPROMPT=
   RPS1=
   if [[ "${WRAPPED_HONOR_PROMPT:-}" == "1" ]]; then
-    local shown=${(%)__wrapped_user_ps1}
+    # (%%) also runs the substitutions of PROMPT_SUBST, which starship and oh-my-zsh rely on.
+    local shown=${(%%)__wrapped_user_ps1}
     shown=$(printf '%s' "$shown" | sed 's/\x1b\[[0-9;]*[A-Za-z]//g; s/\x1b\][^\x07]*\x07//g' | tr -d '\033\r\n')
     printf '\e]7777;%s\a' "$(__wrapped_hex "{\"prompt\":\"$(__wrapped_json_escape "$shown")\"}")"
   fi

@@ -158,6 +158,11 @@ export function listCommands(): Promise<Set<string>> {
         if (!dir) return
         const entries = await fs.readdir(dir).catch(() => [] as string[])
         for (const entry of entries) {
+          // Only Windows marks executables by extension; "python3.12" is a whole name elsewhere.
+          if (!isWindows) {
+            names.add(entry)
+            continue
+          }
           const ext = extname(entry).toLowerCase()
           if (executable.has(ext)) names.add(ext ? entry.slice(0, -ext.length) : entry)
         }

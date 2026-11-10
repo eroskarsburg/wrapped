@@ -402,20 +402,25 @@ export interface OutputLink {
   column?: number
 }
 
-// Paths: Windows drive paths, absolute or home-relative Unix paths, and relative paths that have a
-// separator and end in a file extension, so that prose like "and/or" is not taken for one.
+// Paths: Windows drive paths, absolute or home-relative Unix paths (with an optional file://),
+// and relative paths that have a separator and end in a file extension, so that prose like
+// "and/or" is not taken for one. Any of them may carry a :line:column suffix.
 const LINK_PATTERN = new RegExp(
-  [
+  '(?:' + [
     String.raw`https?:\/\/[^\s"'<>)\]]+`,
-    String.raw`[A-Za-z]:[\\/][^\s"'<>|:*?]+`,
-    String.raw`(?<![\w.~/-])~?\/(?:[\w.@+-]+\/)*[\w.@+-]+\/?`,
-    String.raw`(?<![\w.~/-])(?:\.{1,2}[\\/])?(?:[\w.@+-]+[\\/])+[\w@+-]+\.[A-Za-z0-9]{1,8}`,
-  ].map((source) => `(?:${source})`).join('|') + String.raw`(?::(\d+)(?::(\d+))?)?`,
+    String.raw`(?<![\w/])[A-Za-z]:[\\/][^\s"'<>|:*?]+`,
+    String.raw`(?<![\w.~/-])(?:file:\/\/)?~?\/(?:[\w.@+-]+\/)*[\w.@+-]+\/?`,
+    String.raw`(?<![\w.~/-])(?:\.{1,2}[\\/])?(?:[\w.@+-]+[\\/])+[\w@+-]+(?:\.[A-Za-z0-9]{1,8})+`,
+  ].join('|') + ')' + String.raw`(?::(\d+)(?::(\d+))?)?`,
   'g',
 )
 
+const MIME_TYPE = /^(?:application|audio|font|image|message|model|multipart|text|video)\/[\w.+-]+$/
+const DIFF_HEADER = /^(?:diff --git |--- |\+\+\+ )/
+
 export function findLinks(text: string): OutputLink[] {
   const links: OutputLink[] = []
+  const diffHeader = DIFF_HEADER.test(text)
   for (const match of text.matchAll(LINK_PATTERN)) {
     const whole = match[0]
     const url = /^https?:/i.test(whole)
@@ -425,13 +430,22 @@ export function findLinks(text: string): OutputLink[] {
     let target = whole.slice(0, end)
     let line: number | undefined
     let column: number | undefined
-    if (!url && match[1]) {
+    const suffix = match[1] ? `:${match[1]}${match[2] ? `:${match[2]}` : ''}` : ''
+    if (!url && suffix && target.endsWith(suffix)) {
       line = Number(match[1])
       column = match[2] ? Number(match[2]) : undefined
-      target = target.slice(0, target.length - `:${match[1]}${match[2] ? `:${match[2]}` : ''}`.length)
+      target = target.slice(0, -suffix.length)
     }
-    // A bare "/" or "~/" is never meant as a link.
-    if (!url && target.replace(/^~/, '').replace(/[\\/]/g, '').length === 0) continue
+    if (!url) {
+      target = target.replace(/^file:\/\//, '')
+      const rooted = /^(?:[A-Za-z]:|~|\.{0,2}[\\/])/.test(target)
+      // "node/20.1" and "HTTP/1.1" are versions, "text/html" is a media type: not files.
+      if (!rooted && (/(?:^|[\\/])v?\d+(?:\.\d+)*$/.test(target) || MIME_TYPE.test(target))) continue
+      // A bare "/" or "~/" is never meant as a link.
+      if (target.replace(/^~/, '').replace(/[\\/]/g, '').length === 0) continue
+      // git prefixes the two sides of a diff with a/ and b/, which are not directories.
+      if (diffHeader && !rooted) target = target.replace(/^[ab]\//, '')
+    }
     links.push({ from: match.index, to: match.index + end, target, url, line, column })
   }
   return links
@@ -439,7 +453,10 @@ export function findLinks(text: string): OutputLink[] {
 
 /** Absolute form of a path printed by a command that ran in cwd. */
 export function resolveOutputPath(target: string, cwd: string | undefined, home: string): string {
-  if (target.startsWith('~')) return home + target.slice(1)
+  // A WSL pane reports its directory as \\wsl.localhost\<distro>\..., and its paths live there.
+  const wsl = /^\\\\wsl[^\\]*\\[^\\]+/.exec(cwd ?? '')?.[0]
+  if (wsl && target.startsWith('/')) return wsl + target.replace(/\//g, '\\')
+  if (target.startsWith('~')) return wsl ? target : home + target.slice(1)
   if (/^(?:[A-Za-z]:)?[\\/]/.test(target) || !cwd) return target
   const sep = cwd.includes('\\') && !cwd.includes('/') ? '\\' : '/'
   const parts = cwd.replace(/[\\/]+$/, '').split(/[\\/]/)
@@ -451,6 +468,19 @@ export function resolveOutputPath(target: string, cwd: string | undefined, home:
 }
 
 // --- Shell history import -------------------------------------------------------------------
+
+/**
+ * zsh writes its history "metafied": bytes 0x83 to 0xA2 become 0x83 followed by the byte xor 0x20,
+ * which breaks every accented character if the file is read as plain UTF-8.
+ */
+export function unmetafy(bytes: Uint8Array): Uint8Array {
+  const out = new Uint8Array(bytes.length)
+  let length = 0
+  for (let i = 0; i < bytes.length; i++) {
+    out[length++] = bytes[i] === 0x83 && i + 1 < bytes.length ? bytes[++i] ^ 0x20 : bytes[i]
+  }
+  return out.subarray(0, length)
+}
 
 /** Commands from a shell's own history file, oldest first. */
 export function parseShellHistory(text: string, format: 'plain' | 'zsh' | 'fish'): string[] {
@@ -504,7 +534,8 @@ export function modelRequestOptions(model: string, effort: Effort): Record<strin
 
 /** Text after the "#" that asks for a command in plain language, or null for a normal command. */
 export function commandRequest(text: string): string | null {
-  const match = /^#\s*(\S[\s\S]*)$/.exec(text.trim())
+  // One line only: a pasted script that opens with a comment is still a script to run.
+  const match = /^#\s*(\S.*)$/.exec(text.trim())
   return match ? match[1].trim() : null
 }
 

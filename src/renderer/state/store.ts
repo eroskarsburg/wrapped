@@ -163,7 +163,8 @@ const hooks: SessionHooks = {
     const state = useApp.getState()
     for (let i = history.length - 1; i >= 0; i--) {
       const entry = history[i]
-      if (entry.command !== block.command || entry.exitCode !== undefined) continue
+      // Entries imported from the shell's own history have no time and must stay untouched.
+      if (entry.command !== block.command || entry.exitCode !== undefined || entry.at === undefined) continue
       entry.exitCode = block.exitCode
       entry.durationMs = block.durationMs
       break
@@ -405,13 +406,16 @@ export const useApp = create<AppState>((set, get) => ({
       return
     }
     disposeLeaf(target)
-    const maximizedPaneId = tab.maximizedPaneId === paneId ? undefined : tab.maximizedPaneId
-    get().updateTab(tab.id, { root, activePaneId: leaves(root)[0].id, maximizedPaneId })
+    // A maximized pane that survives keeps the focus: the other panes are out of sight.
+    const maximizedPaneId = tab.maximizedPaneId === paneId || root.type === 'leaf' ? undefined : tab.maximizedPaneId
+    get().updateTab(tab.id, { root, activePaneId: maximizedPaneId ?? leaves(root)[0].id, maximizedPaneId })
   },
 
   focusPane(id) {
     const tab = get().activeTab()
-    if (tab && tab.activePaneId !== id) get().updateTab(tab.id, { activePaneId: id })
+    if (!tab || tab.activePaneId === id) return
+    // Focusing a hidden pane, from the palette for instance, brings it to the front.
+    get().updateTab(tab.id, { activePaneId: id, maximizedPaneId: tab.maximizedPaneId ? id : undefined })
   },
 
   focusAdjacent(delta) {

@@ -111,6 +111,18 @@ Tudo fica em `~/.wrapped/` e é recarregado ao salvar:
 | `notebooks/*.md` | Notebooks |
 | `rules.md`, `mcp.json`, `agent_profiles/*.yaml` | Agente |
 
+As features abaixo podem ser desligadas na tela de configurações (`Ctrl+,`) ou no `settings.toml`:
+
+| Chave | Padrão | O que faz |
+|---|---|---|
+| `input.nextCommandSuggestions` | `true` | Sugere o próximo comando com o input vazio |
+| `agent.commandGeneration` | `true` | `# descrição` gera um comando; desligado, a linha vai ao shell como comentário |
+| `appearance.promptChips` | `["cwd", "git", "diff", "venv", "node", "time"]` | Chips do prompt; tire `diff` para esconder o resumo de alterações do git |
+| `terminal.fileLinks` | `true` | Caminhos de arquivo clicáveis na saída (URLs sempre são) |
+| `terminal.importShellHistory` | `true` | Importa o histórico do bash, zsh, fish e PowerShell |
+
+Os atalhos novos (`maximize-pane`, `bookmark-previous`, `bookmark-next`) seguem o `keybindings.yaml`, como os demais.
+
 Exemplo de perfil em `~/.wrapped/profiles/projeto.toml`:
 
 ```toml
