@@ -1,12 +1,13 @@
 import { expect, test } from '@playwright/test'
-import { input, launch, run, waitReady, type App } from './helpers'
+import { input, isWindows, launch, run, waitReady, type App } from './helpers'
 
 let wrapped: App
 
-for (const shell of [
-  { name: 'PowerShell', profile: 'powershell', fail: 'cmd /c "exit 3"', notFound: 'nonexistentcmd', multi: 'foreach ($i in 1..2) {\n  "multi $i"\n}' },
-  { name: 'Git Bash', profile: 'git-bash', fail: '(exit 3)', notFound: 'nonexistentcmd', multi: 'for i in 1 2; do\n  echo "multi $i"\ndone' },
-]) {
+const powershell = { name: 'PowerShell', profile: 'powershell', fail: 'cmd /c "exit 3"', notFound: 'nonexistentcmd', multi: 'foreach ($i in 1..2) {\n  "multi $i"\n}' }
+const bash = { name: 'Git Bash', profile: 'git-bash', fail: '(exit 3)', notFound: 'nonexistentcmd', multi: 'for i in 1 2; do\n  echo "multi $i"\ndone' }
+const shells = isWindows ? [powershell, bash] : [{ ...bash, name: 'Bash', profile: 'bash' }]
+
+for (const shell of shells) {
   test.describe(shell.name, () => {
     test.beforeEach(async () => {
       wrapped = await launch({ settings: `[terminal]\ndefaultProfile = "${shell.profile}"\nrestoreSession = false\n` })
@@ -57,6 +58,8 @@ for (const shell of [
     })
 
     test('stays usable after a resize during a command', async () => {
+      // A hidden window that is resized stops getting frames from the compositor.
+      test.skip(!!process.env.WRAPPED_E2E_HIDDEN, 'precisa de uma janela visível')
       const { page, app } = wrapped
       await waitReady(page)
       const command = shell.profile === 'powershell' ? '1..3 | % { "tick $_"; Start-Sleep 1 }' : 'for i in 1 2 3; do echo tick $i; sleep 1; done'
@@ -113,11 +116,11 @@ for (const shell of [
 }
 
 test('interactive programs read keys from the running block', async () => {
-  wrapped = await launch({ settings: '[terminal]\ndefaultProfile = "powershell"\nrestoreSession = false\n' })
+  wrapped = await launch({ settings: `[terminal]\ndefaultProfile = "${isWindows ? 'powershell' : 'bash'}"\nrestoreSession = false\n` })
   const { page } = wrapped
   await waitReady(page)
   await input(page).click()
-  await page.keyboard.insertText('$a = Read-Host "nome"; "ola $a"')
+  await page.keyboard.insertText(isWindows ? '$a = Read-Host "nome"; "ola $a"' : 'read -p "nome: " a; echo "ola $a"')
   await page.keyboard.press('Enter')
   const block = page.locator('.block').first()
   await expect(block).toHaveClass(/running/, { timeout: 15_000 })
@@ -130,6 +133,7 @@ test('interactive programs read keys from the running block', async () => {
 })
 
 test('cmd runs in classic mode', async () => {
+  test.skip(!isWindows, 'cmd.exe só existe no Windows')
   wrapped = await launch({ settings: '[terminal]\ndefaultProfile = "cmd"\nrestoreSession = false\n' })
   const { page } = wrapped
   await expect(page.locator('.alt-layer.on')).toBeVisible({ timeout: 20_000 })

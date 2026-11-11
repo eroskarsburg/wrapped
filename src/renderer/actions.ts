@@ -1,3 +1,4 @@
+import { EditorView } from '@codemirror/view'
 import { renderTemplate, workflowParams } from '../shared/logic'
 import type { EnvCollection, SavedPrompt, TabConfig, Workflow } from '../shared/types'
 import { api } from './rpc'
@@ -10,10 +11,24 @@ export interface Action {
   keys?: string
   /** Input-scoped actions leave the keystroke to the running program. */
   inputOnly?: boolean
+  /** True when the keystroke belongs to whatever has the focus at that moment instead. */
+  yields?: () => boolean
   run(): void
 }
 
 const app = () => useApp.getState()
+
+/** Full-screen programs (vim, less, tmux) use Alt+arrows themselves. */
+const fullscreen = () => !!app().activeSession()?.alt
+/**
+ * Alt+Right in the input accepts the next word of the suggestion shown in grey. With the input
+ * empty the grey text is only the next-command hint, and the key still switches panes.
+ */
+const ghostInInput = () => {
+  const editor = document.activeElement?.closest('.cm-editor')
+  if (!editor?.querySelector('.ghost')) return false
+  return (EditorView.findFromDOM(editor as HTMLElement)?.state.doc.length ?? 0) > 0
+}
 
 export const paneEvents = new EventTarget()
 const emit = (name: string) => paneEvents.dispatchEvent(new CustomEvent(name, { detail: app().activeTab()?.activePaneId }))
@@ -30,8 +45,9 @@ export const actions: Action[] = [
   { id: 'split-right', label: 'Dividir pane à direita', keys: 'ctrl-shift-D', run: () => app().splitPane('row') },
   { id: 'split-down', label: 'Dividir pane para baixo', keys: 'ctrl-shift-E', run: () => app().splitPane('column') },
   { id: 'close-pane', label: 'Fechar pane', keys: 'ctrl-shift-X', run: () => app().closePane() },
-  { id: 'next-pane', label: 'Próximo pane', keys: 'alt-right', run: () => app().focusAdjacent(1) },
-  { id: 'previous-pane', label: 'Pane anterior', keys: 'alt-left', run: () => app().focusAdjacent(-1) },
+  { id: 'maximize-pane', label: 'Maximizar ou restaurar pane', keys: 'ctrl-shift-enter', run: () => app().toggleMaximize() },
+  { id: 'next-pane', label: 'Próximo pane', keys: 'alt-right', yields: () => fullscreen() || ghostInInput(), run: () => app().focusAdjacent(1) },
+  { id: 'previous-pane', label: 'Pane anterior', keys: 'alt-left', yields: fullscreen, run: () => app().focusAdjacent(-1) },
   {
     id: 'sync-panes', label: 'Sincronizar input entre panes', keys: 'ctrl-alt-i',
     run() {
@@ -45,9 +61,12 @@ export const actions: Action[] = [
   { id: 'block-copy-output', label: 'Copiar saída do bloco selecionado', keys: 'ctrl-alt-c', run: () => emit('block-copy-output') },
   { id: 'block-copy-command', label: 'Copiar comando do bloco selecionado', keys: 'ctrl-alt-shift-C', run: () => emit('block-copy-command') },
   { id: 'block-bookmark', label: 'Marcar bloco selecionado', keys: 'ctrl-alt-b', run: () => emit('block-bookmark') },
+  { id: 'bookmark-previous', label: 'Ir ao bloco marcado anterior', keys: 'ctrl-alt-up', run: () => emit('bookmark-previous') },
+  { id: 'bookmark-next', label: 'Ir ao próximo bloco marcado', keys: 'ctrl-alt-down', run: () => emit('bookmark-next') },
   { id: 'block-filter', label: 'Filtrar saída do bloco selecionado', keys: 'ctrl-alt-f', run: () => emit('block-filter') },
   { id: 'clear-blocks', label: 'Limpar blocos', keys: 'ctrl-shift-K', run: () => app().activeSession()?.updateBlocks((blocks) => blocks.filter((b) => b.running)) },
-  { id: 'sidebar-tabs', label: 'Mostrar abas', keys: 'ctrl-b', run: () => app().setSidebar('tabs') },
+  // Ctrl+B is the tmux prefix and page up in vim and less: a running program keeps it.
+  { id: 'sidebar-tabs', label: 'Mostrar abas', keys: 'ctrl-b', inputOnly: true, run: () => app().setSidebar('tabs') },
   { id: 'sidebar-drive', label: 'Mostrar Drive', keys: 'ctrl-shift-Y', run: () => app().setSidebar('drive') },
   { id: 'sidebar-files', label: 'Mostrar arquivos', keys: 'ctrl-shift-B', run: () => app().setSidebar('files') },
   { id: 'sidebar-search', label: 'Busca global em arquivos', keys: 'ctrl-shift-G', run: () => app().setSidebar('search') },
@@ -96,6 +115,7 @@ export function installKeybindings(): () => void {
     if (!action) return
     if (overlay && action.id !== 'palette' && action.id !== 'settings') return
     if (action.inputOnly && app().activeSession()?.running) return
+    if (action.yields?.()) return
     event.preventDefault()
     event.stopPropagation()
     action.run()

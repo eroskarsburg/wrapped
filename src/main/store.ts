@@ -1,10 +1,10 @@
 import { safeStorage } from 'electron'
-import { existsSync, mkdirSync, promises as fs, readFileSync, renameSync, watch, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, promises as fs, readFileSync, renameSync, watch, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import { validateTabConfig } from '../shared/logic'
+import { parseShellHistory, unmetafy, validateTabConfig } from '../shared/logic'
 import { defaultSettings, mergeSettings, type Settings } from '../shared/settings'
 import { builtinThemes, parseThemeFile, themeToFile } from '../shared/themes'
 import type {
@@ -76,7 +76,29 @@ export function loadSettings(): Settings {
   }
 }
 
+/** Why settings.toml could not be read, or null when it is fine or does not exist. */
+export function settingsError(): string | null {
+  let text: string
+  try {
+    text = readFileSync(conf('settings.toml'), 'utf8')
+  } catch {
+    return null
+  }
+  try {
+    parseToml(text)
+    return null
+  } catch (error) {
+    return String(error instanceof Error ? error.message : error).split('\n')[0]
+  }
+}
+
 export function saveSettings(settings: Settings): void {
+  // The app runs on the defaults while the file has a syntax error; writing over it would throw
+  // away everything the user had in it, so it is kept next to the new one first.
+  if (settingsError()) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    copyFileSync(conf('settings.toml'), conf(`settings.toml.broken-${stamp}`))
+  }
   writeFileSync(conf('settings.toml'), stringifyToml(settings as unknown as Record<string, unknown>))
 }
 
@@ -153,7 +175,7 @@ export async function saveKnowledge(kind: KnowledgeKind, item: { name: string; f
 }
 
 export async function deleteConfigFile(file: string): Promise<void> {
-  // A prefix test would accept `~/.wrapped/../x` and sibling folders such as `~/.wrapped-old`.
+  // A prefix check alone lets "<config>/../x" and "<config>-outro/x" through.
   const inside = relative(resolve(configDir), resolve(file))
   if (!inside || inside.startsWith('..') || isAbsolute(inside)) throw new Error('fora do diretório de configuração')
   await fs.rm(resolve(file), { force: true })
@@ -241,16 +263,20 @@ export async function appendHistory(entry: HistoryEntry): Promise<void> {
 /** Oldest first. Includes the shells' own history, so that a new install is useful right away. */
 export async function loadHistory(): Promise<HistoryEntry[]> {
   const entries: HistoryEntry[] = []
-  const imports = [
-    join(process.env.APPDATA ?? '', 'Microsoft', 'Windows', 'PowerShell', 'PSReadLine', 'ConsoleHost_history.txt'),
-    join(homedir(), '.bash_history'),
+  const zdot = process.env.ZDOTDIR || homedir()
+  const imports: [string, 'plain' | 'powershell' | 'zsh' | 'fish'][] = [
+    [process.env.APPDATA ? join(process.env.APPDATA, 'Microsoft', 'Windows', 'PowerShell', 'PSReadLine', 'ConsoleHost_history.txt') : '', 'powershell'],
+    [join(homedir(), '.local', 'share', 'powershell', 'PSReadLine', 'ConsoleHost_history.txt'), 'powershell'],
+    [join(homedir(), '.bash_history'), 'plain'],
+    [join(zdot, '.zsh_history'), 'zsh'],
+    [join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'fish', 'fish_history'), 'fish'],
   ]
-  if (!process.env.WRAPPED_HOME) {
-    for (const file of imports) {
-      const text = await fs.readFile(file, 'utf8').catch(() => '')
-      for (const line of text.split(/\r?\n/).slice(-MAX_HISTORY)) {
-        if (line.trim() && !line.endsWith('`')) entries.push({ command: line })
-      }
+  if (!process.env.WRAPPED_HOME && loadSettings().terminal.importShellHistory) {
+    for (const [file, format] of imports) {
+      const bytes = file ? await fs.readFile(file).catch(() => null) : null
+      if (!bytes) continue
+      const text = new TextDecoder().decode(format === 'zsh' ? unmetafy(bytes) : bytes)
+      for (const command of parseShellHistory(text, format).slice(-MAX_HISTORY)) entries.push({ command })
     }
   }
   const own = await fs.readFile(historyFile(), 'utf8').catch(() => '')

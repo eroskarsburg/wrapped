@@ -203,6 +203,8 @@ export interface PaneLeaf {
   profileId?: string
   cwd?: string
   file?: string
+  /** Line to show when an editor pane opens. */
+  line?: number
   startup?: string[]
 }
 
@@ -224,6 +226,8 @@ export interface TabState {
   root: PaneNode
   activePaneId: string
   synced?: boolean
+  /** Pane shown alone over the whole tab, the others kept running out of sight. */
+  maximizedPaneId?: string
 }
 
 export interface WindowSession {
@@ -249,3 +253,9 @@ export type AgentEvent =
   | { type: 'approval'; id: string; name: string; input: unknown }
   | { type: 'done'; stopReason?: string }
   | { type: 'error'; message: string }
+
+/** A font family installed on the system; `mono` is unknown when the platform does not say. */
+export interface FontInfo {
+  family: string
+  mono?: boolean
+}

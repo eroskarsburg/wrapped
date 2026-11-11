@@ -19,3 +19,11 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   perMachine: false
+linux:
+  target:
+    - AppImage
+    - pacman
+    - deb
+  icon: resources/icon.png
+  category: System;TerminalEmulator
+  maintainer: Eros Karsburg

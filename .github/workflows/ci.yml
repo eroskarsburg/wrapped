@@ -36,3 +36,25 @@ jobs:
           name: playwright-results
           path: test-results
           retention-days: 7
+
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: npm
+      - run: npm ci
+      - run: node node_modules/electron/install.js
+      - run: npm run rebuild:pty
+      - run: npm run build
+      - run: npm test
+      - run: xvfb-run --auto-servernum npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results-linux
+          path: test-results
+          retention-days: 7

@@ -3,9 +3,10 @@ import { homedir } from 'node:os'
 import { promises as fs } from 'node:fs'
 import type { Settings } from '../shared/settings'
 import type { EnvCollection, HistoryEntry, KnowledgeKind, Profile, TabConfig, Theme, WindowSession } from '../shared/types'
-import { agentConversation, resetConversation } from './agent'
-import { gitDiff, gitStatus, listDir, readText, searchFiles, writeText } from './code'
+import { agentConversation, generateCommand, resetConversation } from './agent'
+import { gitDiff, gitStats, gitStatus, listDir, readText, searchFiles, writeText } from './code'
 import { completions, describeToken } from './completions'
+import { downloadedWebFonts, listFonts, webFont } from './fonts'
 import { applySettings } from './window'
 import { configDir } from './paths'
 import { createSession, getSession } from './pty'
@@ -32,6 +33,7 @@ export const handlers = {
 
   // Configuration
   loadSettings: () => store.loadSettings(),
+  settingsError: () => store.settingsError(),
   saveSettings(_: WebContents, settings: Settings) {
     store.saveSettings(settings)
     applySettings(settings)
@@ -42,6 +44,9 @@ export const handlers = {
   saveProfile: (_: WebContents, profile: Profile) => store.saveProfile(profile),
   deleteProfile: (_: WebContents, id: string) => store.deleteProfile(id),
   listThemes: () => store.listThemes(),
+  listFonts: () => listFonts(),
+  webFont: (_: WebContents, id: string, weight: number) => webFont(id, weight),
+  downloadedWebFonts: () => downloadedWebFonts(),
   saveTheme: (_: WebContents, theme: Theme) => store.saveTheme(theme),
   listTabConfigs: () => store.listTabConfigs(),
   saveTabConfig: (_: WebContents, config: TabConfig) => store.saveTabConfig(config),
@@ -108,6 +113,7 @@ export const handlers = {
   searchFiles: (_: WebContents, root: string, query: string) => searchFiles(root, query),
   gitStatus: (_: WebContents, cwd: string) => gitStatus(cwd),
   gitDiff: (_: WebContents, cwd: string, file?: string) => gitDiff(cwd, file),
+  gitStats: (_: WebContents, cwd: string) => gitStats(cwd),
 
   // Agent
   agentSend(sender: WebContents, id: string, text: string, context: { cwd?: string; shell?: string; paneId?: string }) {
@@ -119,6 +125,7 @@ export const handlers = {
     agentConversation(id, sender).commandResult(requestId, output),
   agentStop: (sender: WebContents, id: string) => agentConversation(id, sender).stop(),
   agentReset: (_: WebContents, id: string) => resetConversation(id),
+  generateCommand: (_: WebContents, request: string, context: { cwd?: string; shell?: string }) => generateCommand(request, context),
   saveApiKey: (_: WebContents, key: string) => store.saveApiKey(key),
   hasApiKey: () => !!(store.loadApiKey() || process.env.ANTHROPIC_API_KEY),
   listAgentProfiles: () => store.listAgentProfiles(),

@@ -1,12 +1,15 @@
+export const FONT_WEIGHTS = ['100', '200', '300', 'normal', '500', '600', 'bold', '800', '900'] as const
+export type FontWeight = (typeof FONT_WEIGHTS)[number]
+
 export const defaultSettings = {
   appearance: {
     theme: 'wrapped-dark',
     syncOsTheme: false,
     lightTheme: 'solarized-light',
     darkTheme: 'wrapped-dark',
-    fontFamily: "'Cascadia Code', Consolas, monospace",
-    fontSize: 13,
-    fontWeight: 'normal' as 'normal' | 'bold' | '300' | '500',
+    fontFamily: "'JetBrainsMono Nerd Font', 'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
+    fontSize: 15,
+    fontWeight: 'normal' as FontWeight,
     lineHeight: 1.35,
     ligatures: false,
     minimumContrast: 1,
@@ -17,7 +20,7 @@ export const defaultSettings = {
     jumpToBottom: true,
     inputPosition: 'bottom' as 'bottom' | 'top' | 'classic',
     promptMode: 'chips' as 'chips' | 'shell',
-    promptChips: ['cwd', 'git', 'venv', 'node', 'time'] as string[],
+    promptChips: ['cwd', 'git', 'diff', 'venv', 'node', 'time'] as string[],
     verticalTabs: true,
     dimInactivePanes: true,
     focusOnHover: false,
@@ -29,6 +32,8 @@ export const defaultSettings = {
   terminal: {
     defaultProfile: '',
     copyOnSelect: false,
+    fileLinks: true,
+    importShellHistory: true,
     osc52: 'write' as 'off' | 'write',
     audibleBell: false,
     scrollback: 20000,
@@ -42,6 +47,7 @@ export const defaultSettings = {
     syntaxHighlighting: true,
     errorUnderline: true,
     autosuggestions: true,
+    nextCommandSuggestions: true,
     completionsWhileTyping: false,
     aliasExpansion: false,
     commandCorrections: true,
@@ -62,6 +68,7 @@ export const defaultSettings = {
     enabled: false,
     model: 'claude-opus-5-5',
     naturalLanguageDetection: true,
+    commandGeneration: true,
     activeProfile: 'Padrão',
     showCliAgentToolbar: true,
   },
@@ -73,7 +80,7 @@ export interface SettingField {
   path: string
   label: string
   section: string
-  type: 'boolean' | 'number' | 'text' | 'select' | 'list' | 'theme' | 'profile'
+  type: 'boolean' | 'number' | 'text' | 'select' | 'list' | 'theme' | 'profile' | 'font'
   options?: string[]
   min?: number
   max?: number
@@ -84,9 +91,9 @@ export const settingFields: SettingField[] = [
   { path: 'appearance.syncOsTheme', label: 'Seguir claro/escuro do sistema', section: 'Aparência', type: 'boolean' },
   { path: 'appearance.lightTheme', label: 'Tema no modo claro', section: 'Aparência', type: 'theme' },
   { path: 'appearance.darkTheme', label: 'Tema no modo escuro', section: 'Aparência', type: 'theme' },
-  { path: 'appearance.fontFamily', label: 'Fonte', section: 'Aparência', type: 'text' },
+  { path: 'appearance.fontFamily', label: 'Fonte', section: 'Aparência', type: 'font' },
   { path: 'appearance.fontSize', label: 'Tamanho da fonte', section: 'Aparência', type: 'number', min: 8, max: 32 },
-  { path: 'appearance.fontWeight', label: 'Peso da fonte', section: 'Aparência', type: 'select', options: ['300', 'normal', '500', 'bold'] },
+  { path: 'appearance.fontWeight', label: 'Peso da fonte', section: 'Aparência', type: 'select', options: [...FONT_WEIGHTS] },
   { path: 'appearance.lineHeight', label: 'Altura da linha', section: 'Aparência', type: 'number', min: 1, max: 2 },
   { path: 'appearance.ligatures', label: 'Ligaduras', section: 'Aparência', type: 'boolean' },
   { path: 'appearance.minimumContrast', label: 'Contraste mínimo (1 a 21)', section: 'Aparência', type: 'number', min: 1, max: 21 },
@@ -97,7 +104,7 @@ export const settingFields: SettingField[] = [
   { path: 'appearance.jumpToBottom', label: 'Botão de ir ao fim do bloco', section: 'Aparência', type: 'boolean' },
   { path: 'appearance.inputPosition', label: 'Posição do input', section: 'Aparência', type: 'select', options: ['bottom', 'top', 'classic'] },
   { path: 'appearance.promptMode', label: 'Prompt', section: 'Aparência', type: 'select', options: ['chips', 'shell'] },
-  { path: 'appearance.promptChips', label: 'Chips do prompt (cwd, git, venv, node, time, user)', section: 'Aparência', type: 'list' },
+  { path: 'appearance.promptChips', label: 'Chips do prompt (cwd, git, diff, venv, node, time, user)', section: 'Aparência', type: 'list' },
   { path: 'appearance.verticalTabs', label: 'Abas verticais', section: 'Aparência', type: 'boolean' },
   { path: 'appearance.dimInactivePanes', label: 'Escurecer panes inativos', section: 'Aparência', type: 'boolean' },
   { path: 'appearance.focusOnHover', label: 'Focar pane ao passar o mouse', section: 'Aparência', type: 'boolean' },
@@ -106,6 +113,8 @@ export const settingFields: SettingField[] = [
   { path: 'appearance.zoom', label: 'Zoom (%)', section: 'Janela', type: 'number', min: 50, max: 250 },
   { path: 'terminal.defaultProfile', label: 'Perfil padrão', section: 'Terminal', type: 'profile' },
   { path: 'terminal.copyOnSelect', label: 'Copiar ao selecionar', section: 'Terminal', type: 'boolean' },
+  { path: 'terminal.fileLinks', label: 'Caminhos de arquivo clicáveis na saída', section: 'Terminal', type: 'boolean' },
+  { path: 'terminal.importShellHistory', label: 'Importar o histórico dos shells (bash, zsh, fish, PowerShell)', section: 'Terminal', type: 'boolean' },
   { path: 'terminal.osc52', label: 'Acesso de programas ao clipboard (OSC 52)', section: 'Terminal', type: 'select', options: ['off', 'write'] },
   { path: 'terminal.audibleBell', label: 'Bell sonoro', section: 'Terminal', type: 'boolean' },
   { path: 'terminal.scrollback', label: 'Linhas de scrollback por bloco', section: 'Terminal', type: 'number', min: 1000, max: 200000 },
@@ -117,6 +126,7 @@ export const settingFields: SettingField[] = [
   { path: 'input.syntaxHighlighting', label: 'Realce de sintaxe', section: 'Input', type: 'boolean' },
   { path: 'input.errorUnderline', label: 'Sublinhar comandos inválidos', section: 'Input', type: 'boolean' },
   { path: 'input.autosuggestions', label: 'Autosuggestions do histórico', section: 'Input', type: 'boolean' },
+  { path: 'input.nextCommandSuggestions', label: 'Sugerir o próximo comando com o input vazio', section: 'Input', type: 'boolean' },
   { path: 'input.completionsWhileTyping', label: 'Completions enquanto digita', section: 'Input', type: 'boolean' },
   { path: 'input.aliasExpansion', label: 'Expandir aliases', section: 'Input', type: 'boolean' },
   { path: 'input.commandCorrections', label: 'Sugerir correção de comando', section: 'Input', type: 'boolean' },
@@ -131,6 +141,7 @@ export const settingFields: SettingField[] = [
   { path: 'agent.enabled', label: 'Ativar Agent Mode', section: 'Agente', type: 'boolean' },
   { path: 'agent.model', label: 'Modelo', section: 'Agente', type: 'select', options: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-fable-5-2'] },
   { path: 'agent.activeProfile', label: 'Perfil de permissões (de ~/.wrapped/agent_profiles)', section: 'Agente', type: 'text' },
+  { path: 'agent.commandGeneration', label: 'Gerar comando com "# descrição" no input', section: 'Agente', type: 'boolean' },
   { path: 'agent.naturalLanguageDetection', label: 'Detectar linguagem natural no input', section: 'Agente', type: 'boolean' },
   { path: 'agent.showCliAgentToolbar', label: 'Toolbar para CLI agents (claude, codex…)', section: 'Agente', type: 'boolean' },
 ]

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { fuzzyFilter } from '../../shared/logic'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { formatAgo, formatDuration, fuzzyFilter } from '../../shared/logic'
 import { actions, bindingFor, envCommand, launchTabConfig, runPrompt, runWorkflow } from '../actions'
 import { api } from '../rpc'
 import { history, sessions, useApp, leaves, type ParamRequest } from '../state/store'
@@ -10,6 +10,8 @@ interface Entry {
   type: string
   label: string
   hint?: string
+  /** Shown in place of the type, coloured by outcome. */
+  badge?: { text: string; tone: 'ok' | 'fail' | 'none' }
   run(): void
 }
 
@@ -52,7 +54,7 @@ function useEntries(): Entry[] {
   }, [state.workflows, state.notebooks, state.prompts, state.envCollections, state.profiles, state.tabConfigs, state.themes, state.tabs, state.keybindings])
 }
 
-function ListOverlay({ placeholder, entries, onClose, testId }: { placeholder: string; entries: Entry[]; onClose(): void; testId: string }) {
+function ListOverlay({ placeholder, entries, onClose, testId, children }: { placeholder: string; entries: Entry[]; onClose(): void; testId: string; children?: ReactNode }) {
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
   const list = useRef<HTMLDivElement>(null)
@@ -82,10 +84,13 @@ function ListOverlay({ placeholder, entries, onClose, testId }: { placeholder: s
             if (event.key === 'ArrowUp') { event.preventDefault(); setIndex(Math.max(0, index - 1)) }
           }}
         />
+        {children}
         <div className="palette-list" ref={list}>
           {filtered.map((entry, i) => (
             <div key={entry.key} className={i === index ? 'palette-item selected' : 'palette-item'} onMouseEnter={() => setIndex(i)} onClick={() => run(entry)}>
-              <span className="palette-type">{entry.type}</span>
+              {entry.badge
+                ? <span className={`palette-type badge-${entry.badge.tone}`}>{entry.badge.text}</span>
+                : <span className="palette-type">{entry.type}</span>}
               <span className="palette-label">{entry.label}</span>
               {entry.hint && <span className="palette-hint">{entry.hint}</span>}
             </div>
@@ -99,18 +104,35 @@ function ListOverlay({ placeholder, entries, onClose, testId }: { placeholder: s
 
 function CommandSearch({ onClose }: { onClose(): void }) {
   const fillInput = useApp((state) => state.fillInput)
+  const [failedOnly, setFailedOnly] = useState(false)
+  const [here, setHere] = useState(false)
+  const cwd = useApp.getState().activeSession()?.cwd
   const entries = useMemo(() => {
     const seen = new Set<string>()
     const out: Entry[] = []
+    const now = Date.now()
     for (let i = history.length - 1; i >= 0 && out.length < 3000; i--) {
-      const { command, cwd } = history[i]
-      if (seen.has(command)) continue
-      seen.add(command)
-      out.push({ key: `${i}`, type: 'hist', label: command, hint: cwd, run: () => fillInput(command) })
+      const entry = history[i]
+      if (seen.has(entry.command)) continue
+      if (failedOnly && !entry.exitCode) continue
+      if (here && entry.cwd !== cwd) continue
+      seen.add(entry.command)
+      const details = [entry.cwd, entry.durationMs !== undefined && formatDuration(entry.durationMs), entry.at && formatAgo(entry.at, now)]
+      const badge: Entry['badge'] = entry.exitCode === undefined || entry.exitCode === null
+        ? { text: 'hist', tone: 'none' }
+        : entry.exitCode === 0 ? { text: 'ok', tone: 'ok' } : { text: `exit ${entry.exitCode}`, tone: 'fail' }
+      out.push({ key: `${i}`, type: 'hist', badge, label: entry.command, hint: details.filter(Boolean).join(' · '), run: () => fillInput(entry.command) })
     }
     return out
-  }, [fillInput])
-  return <ListOverlay placeholder="Buscar no histórico" entries={entries} onClose={onClose} testId="command-search" />
+  }, [fillInput, failedOnly, here, cwd])
+  return (
+    <ListOverlay placeholder="Buscar no histórico" entries={entries} onClose={onClose} testId="command-search">
+      <div className="palette-filters">
+        <label><input type="checkbox" checked={failedOnly} onChange={(e) => setFailedOnly(e.target.checked)} /> só os que falharam</label>
+        <label><input type="checkbox" checked={here} onChange={(e) => setHere(e.target.checked)} /> só neste diretório</label>
+      </div>
+    </ListOverlay>
+  )
 }
 
 function ParamField({ param, value, onChange, autoFocus }: { param: ParamRequest; value: string; onChange(value: string): void; autoFocus: boolean }) {

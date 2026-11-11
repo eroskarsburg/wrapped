@@ -3,6 +3,14 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+export const isWindows = process.platform === 'win32'
+/** The main shell of the platform, and a POSIX one: Git Bash on Windows, bash elsewhere. */
+export const SHELL = isWindows ? 'powershell' : 'bash'
+export const POSIX = isWindows ? 'git-bash' : 'bash'
+export const BASE = `[terminal]\ndefaultProfile = "${SHELL}"\nrestoreSession = false\n`
+/** Prints item 1 to item n, one per line. */
+export const countTo = (n: number, prefix = 'item') => (isWindows ? `1..${n} | % { "${prefix} $_" }` : `seq 1 ${n} | sed "s/^/${prefix} /"`)
+
 export interface App {
   app: ElectronApplication
   page: Page
@@ -16,7 +24,11 @@ export async function launch(options: { settings?: string; home?: string; keepHo
   if (options.settings) writeFileSync(join(home, 'settings.toml'), options.settings)
   const app = await electron.launch({
     args: ['.'],
-    env: { ...(process.env as Record<string, string>), WRAPPED_HOME: home, WRAPPED_NO_PROFILE: '1' },
+    // WRAPPED_E2E_HIDDEN keeps the windows off screen, which is handy on a desktop in use.
+    env: {
+      ...(process.env as Record<string, string>), WRAPPED_HOME: home, WRAPPED_NO_PROFILE: '1',
+      ...(process.env.WRAPPED_E2E_HIDDEN ? { WRAPPED_HIDDEN: '1' } : {}),
+    },
   })
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')

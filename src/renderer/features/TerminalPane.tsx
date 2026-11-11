@@ -143,11 +143,25 @@ export function TerminalPane({ leaf, active, visible }: { leaf: PaneLeaf; active
       const id = session.blocks.find((b) => b.selected)?.id
       if (id) list.current?.querySelector(`[data-block="${id}"]`)?.scrollIntoView({ block: 'nearest' })
     }
+    const jumpBookmark = (delta: number) => {
+      const all = session.blocks
+      const current = all.findIndex((b) => b.selected)
+      const start = current < 0 ? (delta > 0 ? -1 : all.length) : current
+      for (let i = start + delta; i >= 0 && i < all.length; i += delta) {
+        if (!all[i].bookmarked) continue
+        const id = all[i].id
+        session.updateBlocks((blocks) => blocks.map((b) => ({ ...b, selected: b.id === id })))
+        list.current?.querySelector(`[data-block="${id}"]`)?.scrollIntoView({ block: 'start' })
+        return
+      }
+    }
     const text = (block: Block) => block.lines.map(lineText).join('\n')
     const handlers: Record<string, () => void> = {
       find: () => setFind((state) => ({ ...state, open: true })),
       'block-previous': () => move(-1),
       'block-next': () => move(1),
+      'bookmark-previous': () => jumpBookmark(-1),
+      'bookmark-next': () => jumpBookmark(1),
       'block-copy-output': () => void api.copyText(selectedBlocks().map(text).join('\n\n')),
       'block-copy-command': () => void api.copyText(selectedBlocks().map((b) => b.command).join('\n')),
       'block-bookmark': () => session.updateBlocks((all) => all.map((b) => (b.selected ? { ...b, bookmarked: !b.bookmarked } : b))),
@@ -209,6 +223,12 @@ export function TerminalPane({ leaf, active, visible }: { leaf: PaneLeaf; active
             <span className="muted">Executando… as teclas vão para o programa</span>
           )}
           <button title="Interromper (Ctrl+C)" onClick={() => session.interrupt()}><Icon name="stop" size={13} /></button>
+        </div>
+      )}
+      {session.stalled && !running && exited === null && (
+        <div className="running-bar" data-testid="stalled-bar">
+          <span className="muted">O shell está esperando o resto do comando (aspas ou parênteses sem fechar?). Ctrl+C cancela.</span>
+          <button title="Cancelar (Ctrl+C)" onClick={() => session.cancelPending()}><Icon name="stop" size={13} /></button>
         </div>
       )}
       {exited !== null && <div className="exited">Sessão encerrada (código {exited}).</div>}

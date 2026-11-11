@@ -4,7 +4,7 @@ import { Compartment, EditorState, Prec, RangeSetBuilder, StateEffect, StateFiel
 import { Decoration, EditorView, hoverTooltip, keymap, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view'
 import { vim } from '@replit/codemirror-vim'
 import { useEffect, useRef, useState } from 'react'
-import { looksLikeNaturalLanguage, tokenize } from '../../shared/logic'
+import { commandRequest, looksLikeNaturalLanguage, predictNextCommand, tokenize } from '../../shared/logic'
 import type { Completion } from '../../shared/types'
 import { api } from '../rpc'
 import { history, knownCommands, useApp } from '../state/store'
@@ -132,6 +132,10 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
   const popupRef = useRef<Popup | null>(null)
   const [popup, setPopupState] = useState<Popup | null>(null)
   const [agentHint, setAgentHint] = useState(false)
+  const [aiRequest, setAiRequest] = useState(false)
+  /** Message under the input, kept until the text it belongs to changes. */
+  const [notice, setNotice] = useState<{ text: string; tone: 'muted' | 'error' } | null>(null)
+  const noticeFor = useRef<string | null>(null)
   const historyCursor = useRef<number | null>(null)
   const draft = useRef('')
   const requestId = useRef(0)
@@ -141,6 +145,7 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
   const brackets = useApp((state) => state.settings.input.closeBrackets)
   const inputDraft = useApp((state) => state.inputDraft)
   const agentEnabled = useApp((state) => state.settings.agent.enabled)
+  const generation = useApp((state) => state.settings.agent.commandGeneration)
 
   const setPopup = (value: Popup | null) => {
     popupRef.current = value
@@ -186,10 +191,45 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
     setPopup(null)
   }
 
+  const showNotice = (text: string, tone: 'muted' | 'error', forText: string) => {
+    noticeFor.current = forText
+    setNotice({ text, tone })
+  }
+
+  const generate = async (request: string, original: string) => {
+    if (!useApp.getState().settings.agent.enabled) {
+      showNotice('Ative o Agent Mode nas configurações para gerar comandos com #.', 'error', original)
+      return
+    }
+    showNotice('Gerando comando…', 'muted', original)
+    try {
+      const result = await api.generateCommand(request, { cwd: session.cwd, shell: session.kind })
+      if (view.current?.state.doc.toString() !== original) return
+      if (!result.command) {
+        showNotice(result.explanation || 'Nenhum comando sugerido.', 'error', original)
+        return
+      }
+      noticeFor.current = result.command
+      setText(result.command)
+      setNotice({ text: result.explanation, tone: 'muted' })
+    } catch (error) {
+      // Errors thrown in the main process arrive wrapped in Electron's IPC message.
+      const message = String(error instanceof Error ? error.message : error).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '')
+      showNotice(message, 'error', original)
+    }
+  }
+
   const submit = () => {
     const editor = view.current
     if (!editor) return
     const command = editor.state.doc.toString()
+    // With the feature off, a line that starts with "#" goes to the shell as the comment it is.
+    const request = useApp.getState().settings.agent.commandGeneration ? commandRequest(command) : null
+    if (request) {
+      setPopup(null)
+      void generate(request, command)
+      return
+    }
     if (!command.trim() || !session.ready) return
     setText('')
     setPopup(null)
@@ -218,6 +258,15 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
     if (next < 0) return true
     historyCursor.current = next
     setText(history[next].command)
+    return true
+  }
+
+  /** Fills in the whole ghost suggestion, if one shows and the cursor sits at the end of the input. */
+  const acceptGhost = (editor: EditorView): boolean => {
+    const ghost = editor.state.field(ghostField)
+    const end = editor.state.doc.length
+    if (!ghost || editor.state.selection.main.head !== end) return false
+    editor.dispatch({ changes: { from: end, insert: ghost }, selection: { anchor: end + ghost.length } })
     return true
   }
 
@@ -258,14 +307,23 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
       { key: 'Shift-Enter', run: (editor) => { editor.dispatch(editor.state.replaceSelection('\n')); return true } },
       {
         key: 'Tab',
-        run() {
+        run(editor) {
           const current = popupRef.current
           if (current) accept(current)
-          else void openCompletions(false)
+          else if (!acceptGhost(editor)) void openCompletions(false)
           return true
         },
       },
       { key: 'Ctrl-Space', run: () => { void openCompletions(true); return true } },
+      {
+        // While the shell still reads a submitted command (an open quote), Ctrl+C cancels it there.
+        key: 'Ctrl-c',
+        run(editor) {
+          if (session.ready || !editor.state.selection.main.empty) return false
+          session.cancelPending()
+          return true
+        },
+      },
       {
         key: 'Escape',
         run() {
@@ -300,13 +358,7 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
       },
       {
         key: 'ArrowRight',
-        run(editor) {
-          const ghost = editor.state.field(ghostField)
-          if (!ghost || editor.state.selection.main.head !== editor.state.doc.length) return false
-          const end = editor.state.doc.length
-          editor.dispatch({ changes: { from: end, insert: ghost }, selection: { anchor: end + ghost.length } })
-          return true
-        },
+        run: acceptGhost,
       },
       {
         key: 'Alt-ArrowRight',
@@ -329,6 +381,11 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
       const ghost = input.autosuggestions ? suggestFromHistory(text, session.cwd) : ''
       if (ghost) queueMicrotask(() => view.current?.dispatch({ effects: setGhost.of(ghost) }))
       setAgentHint(agent.enabled && agent.naturalLanguageDetection && looksLikeNaturalLanguage(text, (word) => isKnownCommand(word, session.meta.aliases)))
+      setAiRequest(agent.commandGeneration && commandRequest(text) !== null)
+      if (noticeFor.current !== null && noticeFor.current !== text) {
+        noticeFor.current = null
+        setNotice(null)
+      }
       if (popupRef.current || input.completionsWhileTyping) {
         if (text.trim()) void openCompletions(true)
         else setPopup(null)
@@ -355,6 +412,12 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
     })
     view.current = editor
     if (active) editor.focus()
+    // With the input empty, the ghost text proposes what usually follows the last command.
+    const last = [...session.blocks].reverse().find((block) => !block.background && !block.running && block.command)
+    if (settings.nextCommandSuggestions && last) {
+      const next = predictNextCommand(history, last.command, session.cwd)
+      if (next) editor.dispatch({ effects: setGhost.of(next) })
+    }
     return () => {
       editor.destroy()
       view.current = null
@@ -401,7 +464,9 @@ export function InputEditor({ session, active, disabled }: { session: PaneSessio
         </div>
       )}
       <div className="editor-host" ref={parent} />
-      {agentHint && agentEnabled && <div className="agent-hint">Parece linguagem natural. <kbd>Ctrl+Enter</kbd> envia ao agente.</div>}
+      {notice && <div className={notice.tone === 'error' ? 'agent-hint error' : 'agent-hint'} data-testid="input-notice">{notice.text}</div>}
+      {!notice && aiRequest && <div className="agent-hint"><kbd>Enter</kbd> gera um comando a partir da descrição, sem executar.</div>}
+      {!notice && !aiRequest && agentHint && agentEnabled && <div className="agent-hint">Parece linguagem natural. <kbd>Ctrl+Enter</kbd> envia ao agente{generation && <>, ou comece com <kbd>#</kbd> para gerar um comando</>}.</div>}
     </div>
   )
 }

@@ -83,6 +83,8 @@ interface AppState {
   agentDraft: { text: string; id: number } | null
   inputDraft: { paneId: string; text: string; id: number } | null
   loaded: boolean
+  /** Syntax error in settings.toml, which the app then ignores in favour of the defaults. */
+  settingsError: string | null
   nodeVersion?: string
   /** Bumped when a command starts or ends, for views that summarize sessions. */
   sessionTick: number
@@ -105,8 +107,9 @@ interface AppState {
   closePane(id?: string): void
   focusPane(id: string): void
   focusAdjacent(delta: number): void
+  toggleMaximize(): void
   resizeSplit(tabId: string, splitId: string, sizes: number[]): void
-  openFile(path: string): void
+  openFile(path: string, line?: number): void
   openTabConfig(config: TabConfig, values: Record<string, string>): void
   openOverlay(overlay: Overlay): void
   setSidebar(view: SidebarView | null): void
@@ -160,6 +163,14 @@ const hooks: SessionHooks = {
   },
   onCommandFinished(session, block) {
     const state = useApp.getState()
+    for (let i = history.length - 1; i >= 0; i--) {
+      const entry = history[i]
+      // Entries imported from the shell's own history have no time and must stay untouched.
+      if (entry.command !== block.command || entry.exitCode !== undefined || entry.at === undefined) continue
+      entry.exitCode = block.exitCode
+      entry.durationMs = block.durationMs
+      break
+    }
     void api.appendHistory({
       command: block.command, cwd: block.cwd, exitCode: block.exitCode, at: block.startedAt,
       durationMs: block.durationMs, shell: session.kind,
@@ -233,6 +244,7 @@ function tabFromConfig(config: TabConfig, values: Record<string, string>, profil
 }
 
 let homeDir = ''
+export const getHomeDir = () => homeDir
 
 export const useApp = create<AppState>((set, get) => ({
   settings: structuredClone(defaultSettings),
@@ -254,6 +266,7 @@ export const useApp = create<AppState>((set, get) => ({
   agentDraft: null,
   inputDraft: null,
   loaded: false,
+  settingsError: null,
   sessionTick: 0,
 
   async load() {
@@ -278,12 +291,12 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   async reloadConfig() {
-    const [settings, themes, keybindings, knowledge, notebooks, tabConfigs, profiles] = await Promise.all([
+    const [settings, themes, keybindings, knowledge, notebooks, tabConfigs, profiles, settingsError] = await Promise.all([
       api.loadSettings(), api.listThemes(), api.loadKeybindings(), api.listKnowledge(), api.listNotebooks(),
-      api.listTabConfigs(), api.listProfiles(),
+      api.listTabConfigs(), api.listProfiles(), api.settingsError(),
     ])
     set({
-      settings, themes, keybindings, notebooks, tabConfigs, profiles,
+      settings, themes, keybindings, notebooks, tabConfigs, profiles, settingsError,
       workflows: knowledge.workflows, prompts: knowledge.prompts, envCollections: knowledge.env,
     })
   },
@@ -381,7 +394,7 @@ export const useApp = create<AppState>((set, get) => ({
         ? { type: 'split', id: newId('split'), direction, children: [current, leaf], sizes: [0.5, 0.5] }
         : current,
     )
-    get().updateTab(tab.id, { root, activePaneId: leaf.id })
+    get().updateTab(tab.id, { root, activePaneId: leaf.id, maximizedPaneId: undefined })
   },
 
   closePane(id) {
@@ -396,12 +409,16 @@ export const useApp = create<AppState>((set, get) => ({
       return
     }
     disposeLeaf(target)
-    get().updateTab(tab.id, { root, activePaneId: leaves(root)[0].id })
+    // A maximized pane that survives keeps the focus: the other panes are out of sight.
+    const maximizedPaneId = tab.maximizedPaneId === paneId || root.type === 'leaf' ? undefined : tab.maximizedPaneId
+    get().updateTab(tab.id, { root, activePaneId: maximizedPaneId ?? leaves(root)[0].id, maximizedPaneId })
   },
 
   focusPane(id) {
     const tab = get().activeTab()
-    if (tab && tab.activePaneId !== id) get().updateTab(tab.id, { activePaneId: id })
+    if (!tab || tab.activePaneId === id) return
+    // Focusing a hidden pane, from the palette for instance, brings it to the front.
+    get().updateTab(tab.id, { activePaneId: id, maximizedPaneId: tab.maximizedPaneId ? id : undefined })
   },
 
   focusAdjacent(delta) {
@@ -409,7 +426,15 @@ export const useApp = create<AppState>((set, get) => ({
     if (!tab) return
     const all = leaves(tab.root)
     const index = all.findIndex((leaf) => leaf.id === tab.activePaneId)
-    get().updateTab(tab.id, { activePaneId: all[(index + delta + all.length) % all.length].id })
+    const next = all[(index + delta + all.length) % all.length].id
+    // While maximized, moving the focus shows the next pane alone instead.
+    get().updateTab(tab.id, { activePaneId: next, maximizedPaneId: tab.maximizedPaneId ? next : undefined })
+  },
+
+  toggleMaximize() {
+    const tab = get().activeTab()
+    if (!tab || tab.root.type === 'leaf') return
+    get().updateTab(tab.id, { maximizedPaneId: tab.maximizedPaneId ? undefined : tab.activePaneId })
   },
 
   resizeSplit(tabId, splitId, sizes) {
@@ -419,9 +444,9 @@ export const useApp = create<AppState>((set, get) => ({
     if (tab) get().updateTab(tabId, { root: update(tab.root) })
   },
 
-  openFile(path) {
-    const kind: PaneKind = /\.(?:md|markdown)$/i.test(path) ? 'markdown' : 'editor'
-    get().splitPane('row', kind, { file: path })
+  openFile(path, line) {
+    const kind: PaneKind = /\.(?:md|markdown)$/i.test(path) && !line ? 'markdown' : 'editor'
+    get().splitPane('row', kind, { file: path, line })
   },
 
   openTabConfig(config, values) {

@@ -109,6 +109,8 @@ export class OscRouter {
         this.emit({ type: 'promptReady' })
         break
       case 'C':
+        // A shell that marks every command of a pasted script still makes one block of it.
+        if (this.state === 'running') break
         this.state = 'running'
         this.emit({ type: 'commandStart' })
         break

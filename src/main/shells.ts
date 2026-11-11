@@ -1,9 +1,9 @@
 import { execFile } from 'node:child_process'
 import { existsSync, promises as fs } from 'node:fs'
-import { delimiter, extname, join } from 'node:path'
+import { basename, delimiter, extname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { toWslPath } from '../shared/logic'
-import type { Profile } from '../shared/types'
+import type { Profile, ShellKind } from '../shared/types'
 import { shellResource } from './paths'
 
 const exec = promisify(execFile)
@@ -17,7 +17,47 @@ function which(name: string): string | null {
   return null
 }
 
+const isWindows = process.platform === 'win32'
+
 export async function detectProfiles(): Promise<Profile[]> {
+  return isWindows ? detectWindowsProfiles() : detectUnixProfiles()
+}
+
+/** Kind of shell an executable is, judged by its name. */
+export function shellKind(command: string): ShellKind {
+  const name = basename(command).replace(/\.exe$/i, '').toLowerCase()
+  if (name === 'pwsh' || name === 'powershell') return 'powershell'
+  if (name === 'bash' || name === 'zsh' || name === 'fish' || name === 'cmd') return name
+  return 'other'
+}
+
+async function detectUnixProfiles(): Promise<Profile[]> {
+  const profiles: Profile[] = []
+  const seen = new Set<string>()
+  const add = (profile: Omit<Profile, 'builtin'>) => {
+    if (seen.has(profile.id)) return
+    seen.add(profile.id)
+    profiles.push({ ...profile, builtin: true })
+  }
+  const looks: Record<string, { name: string; icon: string; color: string }> = {
+    bash: { name: 'Bash', icon: '$', color: '#7fd88f' },
+    zsh: { name: 'Zsh', icon: '%', color: '#56d4dd' },
+    fish: { name: 'Fish', icon: '🐟', color: '#e5c07b' },
+    powershell: { name: 'PowerShell', icon: '❯', color: '#6fa8ff' },
+  }
+  // The login shell comes first, so that it is the default without any setting.
+  const login = process.env.SHELL
+  const candidates = [login, ...['bash', 'zsh', 'fish', 'pwsh'].map(which)].filter((c): c is string => !!c && existsSync(c))
+  for (const command of candidates) {
+    const kind = shellKind(command)
+    if (kind === 'other' || kind === 'cmd') continue
+    add({ id: basename(command).toLowerCase(), command, kind, ...looks[kind] })
+  }
+  if (!profiles.length) add({ id: 'sh', name: 'sh', command: '/bin/sh', kind: 'other', icon: '$', color: '#c5ced9' })
+  return profiles
+}
+
+async function detectWindowsProfiles(): Promise<Profile[]> {
   const profiles: Profile[] = []
   const add = (profile: Omit<Profile, 'builtin'>) => profiles.push({ ...profile, builtin: true })
 
@@ -85,13 +125,13 @@ export function launchArgs(profile: Profile): { args: string[]; integrated: bool
           env: {},
         }
       }
-      return { args: [...extra, '-i'], integrated: true, env: { ZDOTDIR: path } }
+      return { args: [...extra, '-i'], integrated: true, env: { ZDOTDIR: path, WRAPPED_USER_ZDOTDIR: process.env.ZDOTDIR ?? '' } }
     }
     case 'fish': {
       const script = shellResource('wrapped.fish')
       const path = profile.wsl ? toWslPath(script) : script.replace(/\\/g, '/')
       const prefix = profile.wsl ? [...extra, '--', 'fish'] : extra
-      return { args: [...prefix, '--interactive', '--init-command', `source ${path}`], integrated: true, env: {} }
+      return { args: [...prefix, '--interactive', '--init-command', `source '${path.replace(/'/g, "\\'")}'`], integrated: true, env: {} }
     }
     default:
       return { args: extra, integrated: false, env: {} }
@@ -118,11 +158,17 @@ export function listCommands(): Promise<Set<string>> {
         if (!dir) return
         const entries = await fs.readdir(dir).catch(() => [] as string[])
         for (const entry of entries) {
+          // Only Windows marks executables by extension; "python3.12" is a whole name elsewhere.
+          if (!isWindows) {
+            names.add(entry)
+            continue
+          }
           const ext = extname(entry).toLowerCase()
           if (executable.has(ext)) names.add(ext ? entry.slice(0, -ext.length) : entry)
         }
       }),
     )
+    if (!isWindows) return names
     try {
       const { stdout } = await exec(
         'powershell.exe',
@@ -140,7 +186,8 @@ export function listCommands(): Promise<Set<string>> {
 
 /** Runs a helper command out of sight, such as the one behind a dynamic enum argument. */
 export async function runQuiet(command: string, cwd?: string): Promise<string> {
-  const { stdout } = await exec(command, { cwd: cwd && existsSync(cwd) ? cwd : undefined, timeout: 8000, windowsHide: true, shell: 'powershell.exe' } as never)
+  const shell = isWindows ? 'powershell.exe' : '/bin/sh'
+  const { stdout } = await exec(command, { cwd: cwd && existsSync(cwd) ? cwd : undefined, timeout: 8000, windowsHide: true, shell } as never)
   return String(stdout)
 }
 

@@ -36,6 +36,12 @@ describe('OscRouter', () => {
     }
   })
 
+  it('keeps a pasted script that marks each of its commands in one block', () => {
+    const { events } = run([`${prompt}\x1b]133;C\x07um\r\n\x1b]133;C\x07dois\r\n\x1b]133;D;0\x07${prompt}`])
+    expect(events.filter((e) => e.type === 'commandStart')).toHaveLength(1)
+    expect(events.flatMap((e) => (e.type === 'output' ? [e.data] : [])).join('')).toBe('um\r\ndois\r\n')
+  })
+
   it('accepts the ST terminator as well as BEL', () => {
     const { events } = run(['\x1b]133;B\x1b\\', '\x1b]133;C\x1b\\x\x1b]133;D;2\x1b\\'])
     expect(events).toContainEqual({ type: 'commandEnd', exitCode: 2 })
