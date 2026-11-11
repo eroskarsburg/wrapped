@@ -2,7 +2,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal, type ITheme } from '@xterm/xterm'
-import { closestCommand, isClearCommand, isCliAgentCommand } from '../../shared/logic'
+import { closestCommand, isClearCommand, isCliAgentCommand, isCommandNotFound } from '../../shared/logic'
 import type { RouterEvent } from '../../shared/oscRouter'
 import type { Settings } from '../../shared/settings'
 import type { PersistedBlock, Profile, SessionMeta, Theme } from '../../shared/types'
@@ -20,7 +20,6 @@ export interface Block extends PersistedBlock {
 
 type PtyEvent = RouterEvent | { type: 'raw'; data: string } | { type: 'exit'; code: number }
 
-const NOT_FOUND = /not recognized|não é reconhecido|command not found|não encontrado/i
 const PERSISTED_LINES = 400
 /** How long a submitted command may go without starting before the pane says the shell is waiting. */
 const STALL_MS = 1500
@@ -338,10 +337,13 @@ export class PaneSession {
   }
 
   private findCorrection(block: Block): string | undefined {
-    if (!block.exitCode || !this.hooks.settings().input.commandCorrections) return undefined
-    if (!block.lines.slice(0, 4).some((line) => NOT_FOUND.test(lineText(line)))) return undefined
+    if (!this.hooks.settings().input.commandCorrections) return undefined
+    if (!isCommandNotFound(block.exitCode, block.lines.slice(0, 4).map(lineText))) return undefined
     const first = block.command.trim().split(/\s+/)[0]
-    const known = closestCommand(first, this.hooks.knownCommands())
+    const commands = this.hooks.knownCommands()
+    // A script can exit 127 because of a program it calls; the one typed exists, so leave it alone.
+    if (commands.has(first)) return undefined
+    const known = closestCommand(first, commands)
     return known ? block.command.replace(first, known) : undefined
   }
 

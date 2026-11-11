@@ -1,11 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import {
   closestCommand, commandNeedsApproval, denyCandidates, fontStack, parseFcList, primaryFamily, commandSegments, commandWords, compileSecretPatterns, encodeCommand, filterLines, formatDuration, fuzzyFilter,
-  isCliAgentCommand, isClearCommand, looksLikeNaturalLanguage, mergeRanges, redact, renderTemplate, secretRanges,
+  isCliAgentCommand, isClearCommand, isCommandNotFound, looksLikeNaturalLanguage, mergeRanges, redact, renderTemplate, secretRanges,
   templateParams, tokenize, toWslPath, validateTabConfig, workflowParams,
 } from '../../src/shared/logic'
 import { getPath, mergeSettings, setPath } from '../../src/shared/settings'
 import { builtinThemes, findTheme, luminance, mix, parseThemeFile, themeFromColors, themeToFile } from '../../src/shared/themes'
+
+describe('isCommandNotFound', () => {
+  it('reads exit 127 and the messages of each shell', () => {
+    expect(isCommandNotFound(127, ["Command 'gti' not found, did you mean:", "  command 'git' from deb git"])).toBe(true)
+    expect(isCommandNotFound(127, [])).toBe(true)
+    expect(isCommandNotFound(1, ["gti : The term 'gti' is not recognized as the name of a cmdlet"])).toBe(true)
+    expect(isCommandNotFound(1, ['bash: gti: command not found'])).toBe(true)
+    expect(isCommandNotFound(1, ["Comando 'gti' não encontrado, você quis dizer:"])).toBe(true)
+  })
+  it('ignores successes and other failures', () => {
+    expect(isCommandNotFound(0, ['bash: gti: command not found'])).toBe(false)
+    expect(isCommandNotFound(null, [])).toBe(false)
+    expect(isCommandNotFound(1, ['npm ERR! missing script: start'])).toBe(false)
+  })
+})
 
 describe('fuzzy', () => {
   it('ranks prefixes first and drops non matches', () => {
