@@ -152,8 +152,16 @@ describe('commandNeedsApproval', () => {
     expect(commandNeedsApproval('rm x', { ...profile, execute: 'always_allow' })).toBe(true)
     expect(commandNeedsApproval('npm run build', { ...profile, execute: 'always_allow' })).toBe(false)
   })
+  it('keeps the deny list absolute through newlines, substitutions and wrappers', () => {
+    const allowAll = { ...profile, execute: 'always_allow' as const }
+    for (const command of ['echo ok\nrm -rf x', 'echo $(rm -rf x)', 'echo `rm x`', 'sudo rm x', 'FOO=1 rm x', '(rm x)', 'echo $(ls $(rm x))']) {
+      expect(commandNeedsApproval(command, allowAll), command).toBe(true)
+    }
+    expect(commandNeedsApproval('echo $(date)', allowAll)).toBe(false)
+  })
   it('splits segments', () => {
     expect(commandSegments('a | b && c > d')).toEqual(['a', 'b', 'c > d'])
+    expect(commandSegments('a\nb')).toEqual(['a', 'b'])
   })
 })
 
