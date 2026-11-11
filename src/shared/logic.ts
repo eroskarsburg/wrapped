@@ -349,15 +349,33 @@ function matchesAny(patterns: string[], command: string): boolean {
 /** Splits on shell separators, so that a rule cannot be dodged by chaining commands. */
 export function commandSegments(command: string): string[] {
   const parts: string[] = []
-  let cursor = 0
-  for (const token of tokenize(command)) {
-    if (token.type === 'operator' && !REDIRECTS.test(token.text)) {
-      parts.push(command.slice(cursor, token.from))
-      cursor = token.to
+  // A newline separates commands just like `;`, but the tokenizer reads it as plain whitespace.
+  for (const line of command.split(/\r?\n/)) {
+    let cursor = 0
+    for (const token of tokenize(line)) {
+      if (token.type === 'operator' && !REDIRECTS.test(token.text)) {
+        parts.push(line.slice(cursor, token.from))
+        cursor = token.to
+      }
     }
+    parts.push(line.slice(cursor))
   }
-  parts.push(command.slice(cursor))
   return parts.map((part) => part.trim()).filter(Boolean)
+}
+
+/** Wrappers that run the command after them: subshells, `sudo`, `env`, variable assignments. */
+const COMMAND_PREFIX = /^(?:[({]\s*|(?:sudo|doas|env|command|builtin|exec|nohup|time|xargs)\s+|[A-Za-z_]\w*=\S*\s+)+/
+
+/** Every command the line may run, including those inside substitutions, as the deny list must see them. */
+export function commandsToCheck(command: string): string[] {
+  const texts = [command]
+  for (let i = 0; i < texts.length; i++) {
+    for (const match of texts[i].matchAll(/\$\(((?:[^()]|\([^()]*\))*)\)|`([^`]*)`/g)) texts.push(match[1] ?? match[2])
+  }
+  return texts
+    .flatMap(commandSegments)
+    .map((segment) => segment.replace(COMMAND_PREFIX, '').replace(/[)}]+$/, '').trim())
+    .filter(Boolean)
 }
 
 export function commandNeedsApproval(
@@ -366,7 +384,7 @@ export function commandNeedsApproval(
 ): boolean {
   const segments = commandSegments(command)
   if (segments.length === 0) return true
-  if (segments.some((segment) => matchesAny(profile.deny, segment))) return true
+  if (commandsToCheck(command).some((segment) => matchesAny(profile.deny, segment))) return true
   // Substitutions and redirects run or write things the segment text does not show.
   if (/[`\n]|\$\(|>/.test(command)) return profile.execute !== 'always_allow'
   if (segments.every((segment) => matchesAny(profile.allow, segment))) return false

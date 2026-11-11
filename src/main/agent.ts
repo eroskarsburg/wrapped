@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { Client as McpClient } from '@modelcontextprotocol/sdk/client/index.js'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import type { WebContents } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { isAbsolute, resolve } from 'node:path'
@@ -69,7 +69,9 @@ async function loadMcpTools(): Promise<{ definitions: Anthropic.Tool[]; routes: 
       let client = mcpClients.get(server)
       if (!client) {
         client = new McpClient({ name: 'wrapped', version: '0.1.0' })
-        await client.connect(new StdioClientTransport({ command: config.command, args: config.args, env: config.env }))
+        // An explicit env replaces the inherited one, so PATH has to be carried over by hand.
+        const env = config.env ? { ...getDefaultEnvironment(), ...config.env } : undefined
+        await client.connect(new StdioClientTransport({ command: config.command, args: config.args, env }))
         mcpClients.set(server, client)
       }
       const { tools } = await client.listTools()
@@ -158,6 +160,7 @@ class AgentConversation {
       ...mcpTools,
     ] as unknown as Anthropic.Tool[]
 
+    const turnStart = this.messages.length
     this.messages.push({
       role: 'user',
       content: `[Diretório: ${context.cwd ?? 'desconhecido'} | Shell: ${context.shell ?? 'desconhecido'}]\n\n${text}`,
@@ -190,7 +193,8 @@ class AgentConversation {
 
       if (message.stop_reason === 'refusal') {
         this.send({ type: 'error', message: 'O modelo recusou esta solicitação.' })
-        this.messages.pop()
+        // Drops the whole turn: popping one message could leave a tool_use without its result.
+        this.messages.length = turnStart
         return
       }
       if (message.stop_reason === 'max_tokens') {
@@ -206,7 +210,10 @@ class AgentConversation {
       }
 
       const calls = message.content.filter((block) => block.type === 'tool_use') as Anthropic.ToolUseBlock[]
-      const results = await Promise.all(calls.map((call) => this.execute(call, profile, context, routes)))
+      // One at a time: commands share the visible pane, and a second one typed while the first
+      // still runs would land on its stdin.
+      const results: Anthropic.ToolResultBlockParam[] = []
+      for (const call of calls) results.push(await this.execute(call, profile, context, routes))
       this.messages.push({ role: 'user', content: results })
     }
     this.send({ type: 'error', message: `O agente parou após ${MAX_TURNS} turnos.` })

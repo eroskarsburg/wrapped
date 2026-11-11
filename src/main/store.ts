@@ -1,7 +1,7 @@
 import { safeStorage } from 'electron'
-import { existsSync, mkdirSync, promises as fs, readFileSync, watch, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, promises as fs, readFileSync, renameSync, watch, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import { validateTabConfig } from '../shared/logic'
@@ -153,8 +153,10 @@ export async function saveKnowledge(kind: KnowledgeKind, item: { name: string; f
 }
 
 export async function deleteConfigFile(file: string): Promise<void> {
-  if (!file.startsWith(configDir)) throw new Error('fora do diretório de configuração')
-  await fs.rm(file, { force: true })
+  // A prefix test would accept `~/.wrapped/../x` and sibling folders such as `~/.wrapped-old`.
+  const inside = relative(resolve(configDir), resolve(file))
+  if (!inside || inside.startsWith('..') || isAbsolute(inside)) throw new Error('fora do diretório de configuração')
+  await fs.rm(resolve(file), { force: true })
 }
 
 export async function exportEnv(collection: EnvCollection, target: string): Promise<void> {
@@ -278,7 +280,7 @@ export function loadSession(): WindowSession | null {
 export function saveSession(session: WindowSession): void {
   // Written through a rename, so that a crash mid-write cannot lose the previous session.
   writeFileSync(`${sessionFile()}.tmp`, JSON.stringify(session))
-  void fs.rename(`${sessionFile()}.tmp`, sessionFile())
+  renameSync(`${sessionFile()}.tmp`, sessionFile())
 }
 
 export function watchConfig(onChange: () => void): void {
