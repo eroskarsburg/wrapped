@@ -49,6 +49,18 @@ export function editDistance(a: string, b: string): number {
   return rows[a.length][b.length]
 }
 
+const NOT_FOUND = /not recognized|não é reconhecido|command not found|command '[^']*' not found|não encontrado/i
+
+/**
+ * Whether a finished command failed because its program does not exist. Exit 127 is how bash, zsh
+ * and fish report it whatever the message says; Ubuntu's command-not-found, for one, prints
+ * "Command 'x' not found, did you mean:". PowerShell exits 1, so the message still counts there.
+ */
+export function isCommandNotFound(exitCode: number | null | undefined, firstLines: string[]): boolean {
+  if (!exitCode) return false
+  return exitCode === 127 || firstLines.some((line) => NOT_FOUND.test(line))
+}
+
 /** Closest known command to a mistyped one, within a distance that still reads as a typo. */
 export function closestCommand(typed: string, known: Iterable<string>): string | null {
   const limit = Math.max(1, Math.floor(typed.length / 3))
